@@ -1,6 +1,7 @@
 /*
-  MyDocuMgm Phase 1 verification (SELECT only)
-  Run only after selecting the existing MyDocuMgm database in SSMS.
+  MyDocuMgm Phase 1 verification (SELECT only).
+  Every result set is gated by DB_NAME(). On a wrong target, only the first result reports 0
+  and all following result sets return no rows.
 */
 SELECT
     DB_NAME() AS CurrentDatabase,
@@ -10,25 +11,41 @@ SELECT
     expected.TableName,
     CASE WHEN tables.object_id IS NOT NULL THEN 1 ELSE 0 END AS ExistsFlag
 FROM (VALUES
-    (N'Categories'), (N'Contents'), (N'ContentSteps'), (N'Tags'), (N'ContentTags'),
-    (N'MediaAssets'), (N'SourceEvidence'), (N'PlaceDetails'), (N'CookingDetails'),
-    (N'CookingIngredients'), (N'ExerciseDetails'), (N'CleaningLaundryDetails'),
-    (N'TravelDetails'), (N'PhotoDetails'), (N'StudyDetails'), (N'ProductDetails'),
+    (N'Categories'), (N'CategorySearchAttributes'), (N'Contents'), (N'ContentSteps'),
+    (N'Tags'), (N'ContentTags'), (N'MediaAssets'), (N'SourceEvidence'),
+    (N'PlaceDetails'), (N'CookingDetails'), (N'CookingIngredients'),
+    (N'ExerciseDetails'), (N'CleaningLaundryDetails'), (N'TravelDetails'),
+    (N'PhotoDetails'), (N'StudyDetails'), (N'ProductDetails'),
     (N'PhoneComputerDetails'), (N'TipDetails'), (N'OtherDetails'),
     (N'__EFMigrationsHistory')
 ) AS expected(TableName)
 LEFT JOIN sys.tables AS tables
     ON tables.name = expected.TableName
    AND SCHEMA_NAME(tables.schema_id) = N'dbo'
+WHERE DB_NAME() = N'MyDocuMgm'
 ORDER BY expected.TableName;
 
 SELECT
     Id,
     SortOrder,
     Code,
-    DisplayName
+    DisplayName,
+    IsActive
 FROM dbo.Categories
+WHERE DB_NAME() = N'MyDocuMgm'
 ORDER BY SortOrder;
+
+SELECT
+    categories.Code AS CategoryCode,
+    attributes.AttributeKey,
+    attributes.DisplayName,
+    attributes.SortOrder,
+    attributes.IsActive,
+    attributes.IsSearchable
+FROM dbo.CategorySearchAttributes AS attributes
+INNER JOIN dbo.Categories AS categories ON categories.Id = attributes.CategoryId
+WHERE DB_NAME() = N'MyDocuMgm'
+ORDER BY categories.SortOrder, attributes.SortOrder;
 
 SELECT
     tables.name AS TableName,
@@ -43,7 +60,8 @@ INNER JOIN sys.index_columns AS index_columns
 INNER JOIN sys.columns AS columns
     ON columns.object_id = index_columns.object_id
    AND columns.column_id = index_columns.column_id
-WHERE indexes.is_hypothetical = 0
+WHERE DB_NAME() = N'MyDocuMgm'
+  AND indexes.is_hypothetical = 0
   AND indexes.name IS NOT NULL
 GROUP BY tables.name, indexes.name, indexes.is_unique
 ORDER BY tables.name, indexes.name;
@@ -53,7 +71,8 @@ SELECT
     name AS CheckConstraintName,
     definition AS CheckDefinition
 FROM sys.check_constraints
-WHERE OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
+WHERE DB_NAME() = N'MyDocuMgm'
+  AND OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
 ORDER BY TableName, CheckConstraintName;
 
 SELECT
@@ -62,7 +81,8 @@ SELECT
     OBJECT_NAME(foreign_keys.referenced_object_id) AS ParentTable,
     foreign_keys.delete_referential_action_desc AS DeleteAction
 FROM sys.foreign_keys AS foreign_keys
-WHERE OBJECT_SCHEMA_NAME(foreign_keys.parent_object_id) = N'dbo'
+WHERE DB_NAME() = N'MyDocuMgm'
+  AND OBJECT_SCHEMA_NAME(foreign_keys.parent_object_id) = N'dbo'
 ORDER BY ChildTable, ForeignKeyName;
 
 SELECT
@@ -74,5 +94,6 @@ SELECT
 FROM sys.columns AS columns
 INNER JOIN sys.tables AS tables ON tables.object_id = columns.object_id
 INNER JOIN sys.types AS types ON types.user_type_id = columns.user_type_id
-WHERE columns.name = N'RowVersion'
+WHERE DB_NAME() = N'MyDocuMgm'
+  AND columns.name = N'RowVersion'
 ORDER BY tables.name;

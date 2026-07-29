@@ -10,7 +10,23 @@ public sealed class Category
     public int SortOrder { get; set; }
     public string Code { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
     public ICollection<Content> Contents { get; set; } = [];
+    public ICollection<CategorySearchAttribute> SearchAttributes { get; set; } = [];
+}
+
+public sealed class CategorySearchAttribute
+{
+    public Guid Id { get; set; }
+    public Guid CategoryId { get; set; }
+    public string AttributeKey { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public bool IsSearchable { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
+    public Category Category { get; set; } = null!;
 }
 
 public sealed class Content
@@ -24,6 +40,7 @@ public sealed class Content
     public ContentVisibility Visibility { get; set; } = ContentVisibility.PRIVATE;
     public bool IsFavorite { get; set; }
     public ExperienceStatus ExperienceStatus { get; set; } = ExperienceStatus.NONE;
+    public WorkflowStep CurrentWorkflowStep { get; set; } = WorkflowStep.URL;
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
@@ -54,6 +71,19 @@ public sealed class Content
         }
 
         Status = status;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MoveTo(WorkflowStep next)
+    {
+        if (!WorkflowStepRules.CanMove(CurrentWorkflowStep, next))
+        {
+            throw new DomainRuleException(
+                "INVALID_WORKFLOW_TRANSITION",
+                $"{CurrentWorkflowStep} 단계에서 {next} 단계로 바로 이동할 수 없습니다.");
+        }
+
+        CurrentWorkflowStep = next;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -98,7 +128,25 @@ public sealed class ContentStep
     public int SortOrder { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public Guid? MediaAssetId { get; set; }
     public Content Content { get; set; } = null!;
+    public MediaAsset? MediaAsset { get; set; }
+
+    public void AssignMedia(MediaAsset? media)
+    {
+        if (media?.IsDeleted == true)
+        {
+            throw new DomainRuleException("DELETED_MEDIA_NOT_ASSIGNABLE", "삭제된 이미지는 단계 대표 이미지로 지정할 수 없습니다.");
+        }
+
+        if (media is not null && media.ContentId != ContentId)
+        {
+            throw new DomainRuleException("MEDIA_CONTENT_MISMATCH", "다른 콘텐츠의 이미지는 단계에 연결할 수 없습니다.");
+        }
+
+        MediaAsset = media;
+        MediaAssetId = media?.Id;
+    }
 }
 
 public sealed class Tag
@@ -130,6 +178,8 @@ public sealed class MediaAsset
     public int Width { get; set; }
     public int Height { get; set; }
     public int SortOrder { get; set; }
+    public long? SourceTimestampMs { get; set; }
+    public bool IsSelected { get; set; }
     public string? Description { get; set; }
     public bool IsPublicAllowed { get; set; }
     public MediaStorageStatus StorageStatus { get; set; } = MediaStorageStatus.PENDING;
@@ -139,6 +189,7 @@ public sealed class MediaAsset
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = [];
     public Content Content { get; set; } = null!;
+    public ICollection<ContentStep> ContentSteps { get; set; } = [];
 
     public void MarkReady() => StorageStatus = MediaStorageStatus.READY;
 

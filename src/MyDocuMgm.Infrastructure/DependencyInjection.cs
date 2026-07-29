@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MyDocuMgm.Application;
+using MyDocuMgm.Application.Categories;
+using MyDocuMgm.Application.CookingIngredients;
+using MyDocuMgm.Application.Contents.UpdateWorkflowStep;
 using MyDocuMgm.Infrastructure.Data;
 using MyDocuMgm.Infrastructure.Storage;
 
@@ -25,9 +28,14 @@ public static class DependencyInjection
         });
         services.AddScoped<IContentRepository, EfContentRepository>();
         services.AddScoped<IMediaAssetRepository, EfMediaAssetRepository>();
+        services.AddScoped<ICookingIngredientRepository, EfCookingIngredientRepository>();
+        services.AddScoped<ICategoryManagementRepository, EfCategoryManagementRepository>();
         services.AddScoped<IMediaStorage, LocalMediaStorage>();
         services.AddScoped<ContentService>();
         services.AddScoped<MediaService>();
+        services.AddScoped<CookingIngredientService>();
+        services.AddScoped<CategoryManagementService>();
+        services.AddScoped<UpdateWorkflowStepService>();
         return services;
     }
 }

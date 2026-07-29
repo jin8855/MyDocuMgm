@@ -30,6 +30,27 @@ public enum MediaStorageStatus
     FAILED
 }
 
+public enum WorkflowStep
+{
+    URL,
+    ANALYSIS_REVIEW,
+    CATEGORY_EDIT,
+    MEDIA,
+    DETAIL,
+    BLOG_DRAFT,
+    COMPLETED
+}
+
+public static class WorkflowStepRules
+{
+    private static readonly WorkflowStep[] OrderedSteps = Enum.GetValues<WorkflowStep>();
+
+    public static IReadOnlyList<WorkflowStep> All => OrderedSteps;
+
+    public static bool CanMove(WorkflowStep current, WorkflowStep next) =>
+        Math.Abs(Array.IndexOf(OrderedSteps, current) - Array.IndexOf(OrderedSteps, next)) <= 1;
+}
+
 public static class ContentStatusRules
 {
     private static readonly HashSet<ContentStatus> Phase1Selectable =

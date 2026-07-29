@@ -1,11 +1,15 @@
 using MyDocuMgm.Domain;
+using MyDocuMgm.Application.Contents.SearchContents;
 
 namespace MyDocuMgm.Application;
 
 public sealed class ContentService(IContentRepository repository)
 {
-    public Task<PagedResult<ContentSummary>> ListAsync(ContentQuery query, CancellationToken cancellationToken) =>
-        repository.ListAsync(query, cancellationToken);
+    public Task<PagedResult<ContentSummary>> ListAsync(ContentQuery query, CancellationToken cancellationToken)
+    {
+        ContentSearchRules.Validate(query);
+        return repository.ListAsync(query, cancellationToken);
+    }
 
     public async Task<ContentDetail> GetAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -130,7 +134,7 @@ public sealed class ContentService(IContentRepository repository)
         }
     }
 
-    private static ContentDetail Map(Content content) =>
+    internal static ContentDetail Map(Content content) =>
         new(
             content.Id,
             content.CategoryId,
@@ -142,6 +146,7 @@ public sealed class ContentService(IContentRepository repository)
             content.Visibility,
             content.IsFavorite,
             content.ExperienceStatus,
+            content.CurrentWorkflowStep,
             content.IsDeleted,
             content.CreatedAtUtc,
             content.UpdatedAtUtc,

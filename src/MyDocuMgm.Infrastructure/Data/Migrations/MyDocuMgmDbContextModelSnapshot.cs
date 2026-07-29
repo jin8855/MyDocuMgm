@@ -38,6 +38,15 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
@@ -57,6 +66,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
                             Code = "PLACE",
                             DisplayName = "가볼곳",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 1
                         },
                         new
@@ -64,6 +75,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
                             Code = "COOKING",
                             DisplayName = "요리",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 2
                         },
                         new
@@ -71,6 +84,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
                             Code = "EXERCISE",
                             DisplayName = "운동",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 3
                         },
                         new
@@ -78,6 +93,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000004"),
                             Code = "CLEANING_LAUNDRY",
                             DisplayName = "청소&세탁",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 4
                         },
                         new
@@ -85,6 +102,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000005"),
                             Code = "TRAVEL",
                             DisplayName = "여행",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 5
                         },
                         new
@@ -92,6 +111,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000006"),
                             Code = "PHOTO",
                             DisplayName = "사진",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 6
                         },
                         new
@@ -99,6 +120,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000007"),
                             Code = "STUDY",
                             DisplayName = "공부",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 7
                         },
                         new
@@ -106,13 +129,17 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000008"),
                             Code = "PRODUCT",
                             DisplayName = "제품",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 8
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000009"),
                             Code = "PHONE_COMPUTER",
-                            DisplayName = "폰·컴퓨터",
+                            DisplayName = "폰&컴",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 9
                         },
                         new
@@ -120,6 +147,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000010"),
                             Code = "TIP",
                             DisplayName = "팁",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 10
                         },
                         new
@@ -127,7 +156,308 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000011"),
                             Code = "OTHER",
                             DisplayName = "기타",
+                            IsActive = true,
+                            RowVersion = new byte[0],
                             SortOrder = 11
+                        });
+                });
+
+            modelBuilder.Entity("MyDocuMgm.Domain.CategorySearchAttribute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AttributeKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSearchable")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId", "AttributeKey")
+                        .IsUnique();
+
+                    b.HasIndex("CategoryId", "IsActive", "IsSearchable", "SortOrder");
+
+                    b.ToTable("CategorySearchAttributes", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0002-000000000001"),
+                            AttributeKey = "primaryIngredient",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000002"),
+                            DisplayName = "주재료",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0002-000000000002"),
+                            AttributeKey = "difficulty",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000002"),
+                            DisplayName = "난이도",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0002-000000000003"),
+                            AttributeKey = "time",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000002"),
+                            DisplayName = "소요시간",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0008-000000000001"),
+                            AttributeKey = "brand",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000008"),
+                            DisplayName = "브랜드",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0008-000000000002"),
+                            AttributeKey = "store",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000008"),
+                            DisplayName = "구매처",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0008-000000000003"),
+                            AttributeKey = "price",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000008"),
+                            DisplayName = "가격대",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0001-000000000001"),
+                            AttributeKey = "region",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000001"),
+                            DisplayName = "지역",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0001-000000000002"),
+                            AttributeKey = "parking",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000001"),
+                            DisplayName = "주차",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0005-000000000001"),
+                            AttributeKey = "destination",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            DisplayName = "국가·지역",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0005-000000000002"),
+                            AttributeKey = "transport",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            DisplayName = "교통",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0003-000000000001"),
+                            AttributeKey = "targetArea",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000003"),
+                            DisplayName = "운동 부위",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0003-000000000002"),
+                            AttributeKey = "equipment",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000003"),
+                            DisplayName = "준비물",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0004-000000000001"),
+                            AttributeKey = "target",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000004"),
+                            DisplayName = "대상",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0004-000000000002"),
+                            AttributeKey = "supplies",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000004"),
+                            DisplayName = "세제·제품",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0006-000000000001"),
+                            AttributeKey = "camera",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000006"),
+                            DisplayName = "기기",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0006-000000000002"),
+                            AttributeKey = "location",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000006"),
+                            DisplayName = "촬영 장소",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0007-000000000001"),
+                            AttributeKey = "subject",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000007"),
+                            DisplayName = "분야",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0007-000000000002"),
+                            AttributeKey = "resource",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000007"),
+                            DisplayName = "참고 자료",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0009-000000000001"),
+                            AttributeKey = "deviceOrOs",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000009"),
+                            DisplayName = "기기·OS",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0009-000000000002"),
+                            AttributeKey = "problem",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000009"),
+                            DisplayName = "문제 유형",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0010-000000000001"),
+                            AttributeKey = "situation",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000010"),
+                            DisplayName = "적용 상황",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0010-000000000002"),
+                            AttributeKey = "keyPoint",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000010"),
+                            DisplayName = "주제",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("20000000-0000-0000-0011-000000000001"),
+                            AttributeKey = "customLabel",
+                            CategoryId = new Guid("10000000-0000-0000-0000-000000000011"),
+                            DisplayName = "주제",
+                            IsActive = true,
+                            IsSearchable = true,
+                            RowVersion = new byte[0],
+                            SortOrder = 1
                         });
                 });
 
@@ -164,6 +494,12 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("CurrentWorkflowStep")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("URL");
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
@@ -215,12 +551,16 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
                     b.HasIndex("Title");
 
+                    b.HasIndex("CurrentWorkflowStep", "UpdatedAtUtc");
+
                     b.HasIndex("IsDeleted", "UpdatedAtUtc");
 
                     b.HasIndex("CategoryId", "Status", "IsFavorite");
 
                     b.ToTable("Contents", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Contents_CurrentWorkflowStep", "[CurrentWorkflowStep] IN ('URL','ANALYSIS_REVIEW','CATEGORY_EDIT','MEDIA','DETAIL','BLOG_DRAFT','COMPLETED')");
+
                             t.HasCheckConstraint("CK_Contents_ExperienceStatus", "[ExperienceStatus] IN ('NONE','WANT_TO_TRY','TRIED')");
 
                             t.HasCheckConstraint("CK_Contents_Status", "[Status] IN ('INBOX','REVIEW_REQUIRED','READY','DRAFTED','PUBLISHED','ARCHIVED')");
@@ -242,6 +582,9 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<Guid?>("MediaAssetId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
@@ -251,6 +594,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MediaAssetId");
 
                     b.HasIndex("ContentId", "SortOrder")
                         .IsUnique();
@@ -305,6 +650,15 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.Property<Guid>("ContentId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("IngredientType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("부재료");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -317,6 +671,12 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.Property<string>("Quantity")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
@@ -386,6 +746,9 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.Property<bool>("IsPublicAllowed")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsSelected")
+                        .HasColumnType("bit");
+
                     b.Property<string>("MimeType")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -418,6 +781,9 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
+                    b.Property<long?>("SourceTimestampMs")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("StorageStatus")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -438,7 +804,11 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
                     b.HasIndex("Sha256");
 
+                    b.HasIndex("ContentId", "Sha256");
+
                     b.HasIndex("ContentId", "SortOrder");
+
+                    b.HasIndex("ContentId", "IsSelected", "SourceTimestampMs");
 
                     b.ToTable("MediaAssets", null, t =>
                         {
@@ -698,6 +1068,17 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.ToTable("TravelDetails", (string)null);
                 });
 
+            modelBuilder.Entity("MyDocuMgm.Domain.CategorySearchAttribute", b =>
+                {
+                    b.HasOne("MyDocuMgm.Domain.Category", "Category")
+                        .WithMany("SearchAttributes")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("MyDocuMgm.Domain.CleaningLaundryDetails", b =>
                 {
                     b.HasOne("MyDocuMgm.Domain.Content", "Content")
@@ -728,7 +1109,14 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("MyDocuMgm.Domain.MediaAsset", "MediaAsset")
+                        .WithMany("ContentSteps")
+                        .HasForeignKey("MediaAssetId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Content");
+
+                    b.Navigation("MediaAsset");
                 });
 
             modelBuilder.Entity("MyDocuMgm.Domain.ContentTag", b =>
@@ -896,6 +1284,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
             modelBuilder.Entity("MyDocuMgm.Domain.Category", b =>
                 {
                     b.Navigation("Contents");
+
+                    b.Navigation("SearchAttributes");
                 });
 
             modelBuilder.Entity("MyDocuMgm.Domain.Content", b =>
@@ -934,6 +1324,11 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
             modelBuilder.Entity("MyDocuMgm.Domain.CookingDetails", b =>
                 {
                     b.Navigation("Ingredients");
+                });
+
+            modelBuilder.Entity("MyDocuMgm.Domain.MediaAsset", b =>
+                {
+                    b.Navigation("ContentSteps");
                 });
 
             modelBuilder.Entity("MyDocuMgm.Domain.Tag", b =>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MyDocuMgm.Application;
 using MyDocuMgm.Domain;
+using MyDocuMgm.Application.Contents.UpdateWorkflowStep;
 
 namespace MyDocuMgm.Api.Controllers;
 
@@ -10,15 +11,32 @@ public sealed class ContentsController(ContentService service) : ControllerBase
 {
     [HttpGet]
     public Task<PagedResult<ContentSummary>> List(
-        [FromQuery] string? search,
-        [FromQuery] Guid? categoryId,
-        [FromQuery] ContentStatus? status,
-        [FromQuery] bool? isFavorite,
+        [FromQuery] string? keyword = null,
+        [FromQuery] string? majorCategory = null,
+        [FromQuery] string? attributeKey = null,
+        [FromQuery] string? attributeValue = null,
+        [FromQuery] SearchScope searchScope = SearchScope.ALL,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] ContentStatus? status = null,
+        [FromQuery] bool? isFavorite = null,
         [FromQuery] bool includeDeleted = false,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 30,
+        [FromQuery] int pageSize = 24,
         CancellationToken cancellationToken = default) =>
-        service.ListAsync(new ContentQuery(search, categoryId, status, isFavorite, includeDeleted, page, pageSize), cancellationToken);
+        service.ListAsync(
+            new ContentQuery(
+                keyword,
+                majorCategory,
+                attributeKey,
+                attributeValue,
+                searchScope,
+                categoryId,
+                status,
+                isFavorite,
+                includeDeleted,
+                page,
+                pageSize),
+            cancellationToken);
 
     [HttpPost]
     public async Task<ActionResult<ContentDetail>> Create(
@@ -53,4 +71,16 @@ public sealed class ContentsController(ContentService service) : ControllerBase
     [HttpPost("{id:guid}/restore")]
     public Task<ContentDetail> Restore(Guid id, CancellationToken cancellationToken) =>
         service.RestoreAsync(id, cancellationToken);
+}
+
+[ApiController]
+[Route("api/contents/{contentId:guid}/workflow")]
+public sealed class ContentWorkflowController(UpdateWorkflowStepService service) : ControllerBase
+{
+    [HttpPatch]
+    public Task<ContentDetail> Update(
+        Guid contentId,
+        [FromBody] UpdateWorkflowStepRequest request,
+        CancellationToken cancellationToken) =>
+        service.ExecuteAsync(contentId, request, cancellationToken);
 }

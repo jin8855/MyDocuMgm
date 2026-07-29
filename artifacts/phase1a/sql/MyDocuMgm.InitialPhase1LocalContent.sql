@@ -1,4 +1,14 @@
-﻿IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
+/*
+  MyDocuMgm Phase 1 local migration script.
+  Safety gate: stop before any DDL or transaction when the selected database is not MyDocuMgm.
+*/
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+IF DB_NAME() <> N'MyDocuMgm'
+    THROW 51000, N'WRONG_TARGET_DATABASE: select MyDocuMgm before running this script.', 1;
+GO
+
+IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
 BEGIN
     CREATE TABLE [__EFMigrationsHistory] (
         [MigrationId] nvarchar(150) NOT NULL,
@@ -465,6 +475,318 @@ IF NOT EXISTS (
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
     VALUES (N'20260729074010_InitialPhase1LocalContent', N'10.0.10');
+END;
+
+COMMIT;
+GO
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [MediaAssets] ADD [IsSelected] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [MediaAssets] ADD [SourceTimestampMs] bigint NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [CookingIngredients] ADD [IngredientType] nvarchar(30) NOT NULL DEFAULT N'부재료';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [CookingIngredients] ADD [IsPrimary] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [CookingIngredients] ADD [RowVersion] rowversion NOT NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [ContentSteps] ADD [MediaAssetId] uniqueidentifier NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [Contents] ADD [CurrentWorkflowStep] nvarchar(30) NOT NULL DEFAULT N'URL';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [Categories] ADD [IsActive] bit NOT NULL DEFAULT CAST(0 AS bit);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [Categories] ADD [RowVersion] rowversion NOT NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE TABLE [CategorySearchAttributes] (
+        [Id] uniqueidentifier NOT NULL,
+        [CategoryId] uniqueidentifier NOT NULL,
+        [AttributeKey] nvarchar(80) NOT NULL,
+        [DisplayName] nvarchar(80) NOT NULL,
+        [SortOrder] int NOT NULL,
+        [IsActive] bit NOT NULL,
+        [IsSearchable] bit NOT NULL,
+        [RowVersion] rowversion NOT NULL,
+        CONSTRAINT [PK_CategorySearchAttributes] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_CategorySearchAttributes_Categories_CategoryId] FOREIGN KEY ([CategoryId]) REFERENCES [Categories] ([Id]) ON DELETE NO ACTION
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000001'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000002'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000003'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000004'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000005'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000006'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000007'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000008'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [DisplayName] = N''폰&컴'', [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000009'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000010'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'UPDATE [Categories] SET [IsActive] = CAST(1 AS bit)
+    WHERE [Id] = ''10000000-0000-0000-0000-000000000011'';
+    SELECT @@ROWCOUNT');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    IF EXISTS (SELECT * FROM [sys].[identity_columns] WHERE [name] IN (N'Id', N'AttributeKey', N'CategoryId', N'DisplayName', N'IsActive', N'IsSearchable', N'SortOrder') AND [object_id] = OBJECT_ID(N'[CategorySearchAttributes]'))
+        SET IDENTITY_INSERT [CategorySearchAttributes] ON;
+    EXEC(N'INSERT INTO [CategorySearchAttributes] ([Id], [AttributeKey], [CategoryId], [DisplayName], [IsActive], [IsSearchable], [SortOrder])
+    VALUES (''20000000-0000-0000-0001-000000000001'', N''region'', ''10000000-0000-0000-0000-000000000001'', N''지역'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0001-000000000002'', N''parking'', ''10000000-0000-0000-0000-000000000001'', N''주차'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0002-000000000001'', N''primaryIngredient'', ''10000000-0000-0000-0000-000000000002'', N''주재료'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0002-000000000002'', N''difficulty'', ''10000000-0000-0000-0000-000000000002'', N''난이도'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0002-000000000003'', N''time'', ''10000000-0000-0000-0000-000000000002'', N''소요시간'', CAST(1 AS bit), CAST(1 AS bit), 3),
+    (''20000000-0000-0000-0003-000000000001'', N''targetArea'', ''10000000-0000-0000-0000-000000000003'', N''운동 부위'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0003-000000000002'', N''equipment'', ''10000000-0000-0000-0000-000000000003'', N''준비물'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0004-000000000001'', N''target'', ''10000000-0000-0000-0000-000000000004'', N''대상'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0004-000000000002'', N''supplies'', ''10000000-0000-0000-0000-000000000004'', N''세제·제품'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0005-000000000001'', N''destination'', ''10000000-0000-0000-0000-000000000005'', N''국가·지역'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0005-000000000002'', N''transport'', ''10000000-0000-0000-0000-000000000005'', N''교통'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0006-000000000001'', N''camera'', ''10000000-0000-0000-0000-000000000006'', N''기기'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0006-000000000002'', N''location'', ''10000000-0000-0000-0000-000000000006'', N''촬영 장소'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0007-000000000001'', N''subject'', ''10000000-0000-0000-0000-000000000007'', N''분야'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0007-000000000002'', N''resource'', ''10000000-0000-0000-0000-000000000007'', N''참고 자료'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0008-000000000001'', N''brand'', ''10000000-0000-0000-0000-000000000008'', N''브랜드'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0008-000000000002'', N''store'', ''10000000-0000-0000-0000-000000000008'', N''구매처'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0008-000000000003'', N''price'', ''10000000-0000-0000-0000-000000000008'', N''가격대'', CAST(1 AS bit), CAST(1 AS bit), 3),
+    (''20000000-0000-0000-0009-000000000001'', N''deviceOrOs'', ''10000000-0000-0000-0000-000000000009'', N''기기·OS'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0009-000000000002'', N''problem'', ''10000000-0000-0000-0000-000000000009'', N''문제 유형'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0010-000000000001'', N''situation'', ''10000000-0000-0000-0000-000000000010'', N''적용 상황'', CAST(1 AS bit), CAST(1 AS bit), 1),
+    (''20000000-0000-0000-0010-000000000002'', N''keyPoint'', ''10000000-0000-0000-0000-000000000010'', N''주제'', CAST(1 AS bit), CAST(1 AS bit), 2),
+    (''20000000-0000-0000-0011-000000000001'', N''customLabel'', ''10000000-0000-0000-0000-000000000011'', N''주제'', CAST(1 AS bit), CAST(1 AS bit), 1)');
+    IF EXISTS (SELECT * FROM [sys].[identity_columns] WHERE [name] IN (N'Id', N'AttributeKey', N'CategoryId', N'DisplayName', N'IsActive', N'IsSearchable', N'SortOrder') AND [object_id] = OBJECT_ID(N'[CategorySearchAttributes]'))
+        SET IDENTITY_INSERT [CategorySearchAttributes] OFF;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE INDEX [IX_MediaAssets_ContentId_IsSelected_SourceTimestampMs] ON [MediaAssets] ([ContentId], [IsSelected], [SourceTimestampMs]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE INDEX [IX_MediaAssets_ContentId_Sha256] ON [MediaAssets] ([ContentId], [Sha256]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE INDEX [IX_ContentSteps_MediaAssetId] ON [ContentSteps] ([MediaAssetId]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE INDEX [IX_Contents_CurrentWorkflowStep_UpdatedAtUtc] ON [Contents] ([CurrentWorkflowStep], [UpdatedAtUtc]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    EXEC(N'ALTER TABLE [Contents] ADD CONSTRAINT [CK_Contents_CurrentWorkflowStep] CHECK ([CurrentWorkflowStep] IN (''URL'',''ANALYSIS_REVIEW'',''CATEGORY_EDIT'',''MEDIA'',''DETAIL'',''BLOG_DRAFT'',''COMPLETED''))');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_CategorySearchAttributes_CategoryId_AttributeKey] ON [CategorySearchAttributes] ([CategoryId], [AttributeKey]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    CREATE INDEX [IX_CategorySearchAttributes_CategoryId_IsActive_IsSearchable_SortOrder] ON [CategorySearchAttributes] ([CategoryId], [IsActive], [IsSearchable], [SortOrder]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    ALTER TABLE [ContentSteps] ADD CONSTRAINT [FK_ContentSteps_MediaAssets_MediaAssetId] FOREIGN KEY ([MediaAssetId]) REFERENCES [MediaAssets] ([Id]) ON DELETE NO ACTION;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260729144229_AlignWireframeV7Schema'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260729144229_AlignWireframeV7Schema', N'10.0.10');
 END;
 
 COMMIT;

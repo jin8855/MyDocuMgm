@@ -9,11 +9,14 @@ namespace MyDocuMgm.Api.Controllers;
 public sealed class MediaController(MediaService service) : ControllerBase
 {
     [HttpGet]
-    public Task<IReadOnlyList<MediaAsset>> List(
+    public Task<MediaPage> List(
         Guid contentId,
-        [FromQuery] bool includeDeleted,
-        CancellationToken cancellationToken) =>
-        service.ListAsync(contentId, includeDeleted, cancellationToken);
+        [FromQuery] MediaFilter filter = MediaFilter.ALL,
+        [FromQuery] MediaSort sort = MediaSort.TIME_ASC,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 24,
+        CancellationToken cancellationToken = default) =>
+        service.SearchAsync(new MediaQuery(contentId, filter, sort, page, pageSize), cancellationToken);
 
     [HttpPost]
     [RequestSizeLimit(20 * 1024 * 1024 + 65_536)]
@@ -31,9 +34,9 @@ public sealed class MediaController(MediaService service) : ControllerBase
     public Task<MediaAsset> Update(
         Guid contentId,
         Guid mediaId,
-        [FromBody] UpdateMediaRequest request,
+        [FromBody] UpdateMediaMetadataRequest request,
         CancellationToken cancellationToken) =>
-        service.UpdateAsync(contentId, mediaId, request.Description, request.IsPublicAllowed, cancellationToken);
+        service.UpdateAsync(contentId, mediaId, request, cancellationToken);
 
     [HttpPut("order")]
     public async Task<IActionResult> Reorder(
@@ -59,6 +62,4 @@ public sealed class MediaController(MediaService service) : ControllerBase
         return NoContent();
     }
 }
-
-public sealed record UpdateMediaRequest(string? Description, bool IsPublicAllowed);
 public sealed record ReorderMediaRequest(IReadOnlyList<Guid> MediaIds);

@@ -41,6 +41,8 @@ public sealed class MediaCompensationTests
             Task.FromResult(Media);
         public Task<IReadOnlyList<MediaAsset>> ListAsync(Guid contentId, bool includeDeleted, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<MediaAsset>>(Media is null ? [] : [Media]);
+        public Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(new MediaPage([], 0, 0, 0, query.Page, query.PageSize));
         public Task AddAsync(MediaAsset media, CancellationToken cancellationToken) { Media = media; return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {

@@ -30,7 +30,10 @@ public sealed class CookingIngredient
     public int SortOrder { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Quantity { get; set; }
+    public string IngredientType { get; set; } = "부재료";
+    public bool IsPrimary { get; set; }
     public string? Note { get; set; }
+    public byte[] RowVersion { get; set; } = [];
     public CookingDetails CookingDetails { get; set; } = null!;
 }
 

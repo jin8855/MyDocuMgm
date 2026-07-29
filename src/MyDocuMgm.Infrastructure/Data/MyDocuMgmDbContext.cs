@@ -6,6 +6,7 @@ namespace MyDocuMgm.Infrastructure.Data;
 public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> options) : DbContext(options)
 {
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<CategorySearchAttribute> CategorySearchAttributes => Set<CategorySearchAttribute>();
     public DbSet<Content> Contents => Set<Content>();
     public DbSet<ContentStep> ContentSteps => Set<ContentStep>();
     public DbSet<Tag> Tags => Set<Tag>();
@@ -52,6 +53,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         category.HasKey(value => value.Id);
         category.Property(value => value.Code).HasMaxLength(40).IsRequired();
         category.Property(value => value.DisplayName).HasMaxLength(80).IsRequired();
+        category.Property(value => value.RowVersion).IsRowVersion();
         category.HasIndex(value => value.Code).IsUnique();
         category.HasIndex(value => value.SortOrder).IsUnique();
         category.HasData(CategoryCatalog.All.Select(value => new Category
@@ -59,7 +61,31 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
             Id = value.Id,
             SortOrder = value.SortOrder,
             Code = value.Code,
-            DisplayName = value.DisplayName
+            DisplayName = value.DisplayName,
+            IsActive = true
+        }));
+
+        var attribute = modelBuilder.Entity<CategorySearchAttribute>();
+        attribute.ToTable("CategorySearchAttributes");
+        attribute.HasKey(value => value.Id);
+        attribute.Property(value => value.AttributeKey).HasMaxLength(80).IsRequired();
+        attribute.Property(value => value.DisplayName).HasMaxLength(80).IsRequired();
+        attribute.Property(value => value.RowVersion).IsRowVersion();
+        attribute.HasIndex(value => new { value.CategoryId, value.AttributeKey }).IsUnique();
+        attribute.HasIndex(value => new { value.CategoryId, value.IsActive, value.IsSearchable, value.SortOrder });
+        attribute.HasOne(value => value.Category)
+            .WithMany(value => value.SearchAttributes)
+            .HasForeignKey(value => value.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        attribute.HasData(CategorySearchAttributeCatalog.All.Select(value => new CategorySearchAttribute
+        {
+            Id = value.Id,
+            CategoryId = value.CategoryId,
+            AttributeKey = value.AttributeKey,
+            DisplayName = value.DisplayName,
+            SortOrder = value.SortOrder,
+            IsActive = value.IsActive,
+            IsSearchable = value.IsSearchable
         }));
     }
 
@@ -71,6 +97,9 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
             table.HasCheckConstraint("CK_Contents_Status", "[Status] IN ('INBOX','REVIEW_REQUIRED','READY','DRAFTED','PUBLISHED','ARCHIVED')");
             table.HasCheckConstraint("CK_Contents_Visibility", "[Visibility] IN ('PRIVATE','PUBLIC_ALLOWED')");
             table.HasCheckConstraint("CK_Contents_ExperienceStatus", "[ExperienceStatus] IN ('NONE','WANT_TO_TRY','TRIED')");
+            table.HasCheckConstraint(
+                "CK_Contents_CurrentWorkflowStep",
+                "[CurrentWorkflowStep] IN ('URL','ANALYSIS_REVIEW','CATEGORY_EDIT','MEDIA','DETAIL','BLOG_DRAFT','COMPLETED')");
         });
         content.HasKey(value => value.Id);
         content.Property(value => value.Title).HasMaxLength(200).IsRequired();
@@ -79,6 +108,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.Property(value => value.Status).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.Visibility).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.ExperienceStatus).HasConversion<string>().HasMaxLength(30);
+        content.Property(value => value.CurrentWorkflowStep).HasConversion<string>().HasMaxLength(30).HasDefaultValue(WorkflowStep.URL);
         content.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.UpdatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.DeletedAtUtc).HasColumnType("datetime2");
@@ -87,6 +117,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.HasOne(value => value.Category).WithMany(value => value.Contents).HasForeignKey(value => value.CategoryId).OnDelete(DeleteBehavior.Restrict);
         content.HasIndex(value => new { value.IsDeleted, value.UpdatedAtUtc });
         content.HasIndex(value => new { value.CategoryId, value.Status, value.IsFavorite });
+        content.HasIndex(value => new { value.CurrentWorkflowStep, value.UpdatedAtUtc });
         content.HasIndex(value => value.Title);
     }
 
@@ -98,7 +129,12 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         step.Property(value => value.Title).HasMaxLength(200).IsRequired();
         step.Property(value => value.Description).HasMaxLength(4000);
         step.HasIndex(value => new { value.ContentId, value.SortOrder }).IsUnique();
+        step.HasIndex(value => value.MediaAssetId);
         step.HasOne(value => value.Content).WithMany(value => value.Steps).HasForeignKey(value => value.ContentId).OnDelete(DeleteBehavior.Cascade);
+        step.HasOne(value => value.MediaAsset)
+            .WithMany(value => value.ContentSteps)
+            .HasForeignKey(value => value.MediaAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         var tag = modelBuilder.Entity<Tag>();
         tag.ToTable("Tags");
@@ -133,6 +169,8 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         media.HasIndex(value => value.RelativePath).IsUnique();
         media.HasIndex(value => value.Sha256);
         media.HasIndex(value => new { value.ContentId, value.SortOrder });
+        media.HasIndex(value => new { value.ContentId, value.IsSelected, value.SourceTimestampMs });
+        media.HasIndex(value => new { value.ContentId, value.Sha256 });
         media.HasOne(value => value.Content).WithMany(value => value.MediaAssets).HasForeignKey(value => value.ContentId).OnDelete(DeleteBehavior.Restrict);
 
         var evidence = modelBuilder.Entity<SourceEvidence>();
@@ -172,7 +210,9 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         ingredient.HasKey(value => value.Id);
         ingredient.Property(value => value.Name).HasMaxLength(200).IsRequired();
         ingredient.Property(value => value.Quantity).HasMaxLength(100);
+        ingredient.Property(value => value.IngredientType).HasMaxLength(30).IsRequired().HasDefaultValue("부재료");
         ingredient.Property(value => value.Note).HasMaxLength(500);
+        ingredient.Property(value => value.RowVersion).IsRowVersion();
         ingredient.HasIndex(value => new { value.ContentId, value.SortOrder }).IsUnique();
         ingredient.HasOne(value => value.CookingDetails).WithMany(value => value.Ingredients).HasForeignKey(value => value.ContentId).OnDelete(DeleteBehavior.Cascade);
 

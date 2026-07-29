@@ -10,6 +10,16 @@ public sealed class MediaService(
     public Task<IReadOnlyList<MediaAsset>> ListAsync(Guid contentId, bool includeDeleted, CancellationToken cancellationToken) =>
         mediaRepository.ListAsync(contentId, includeDeleted, cancellationToken);
 
+    public Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken)
+    {
+        if (query.Page < 1 || query.PageSize is not (24 or 48 or 96))
+        {
+            throw new DomainRuleException("INVALID_MEDIA_PAGE", "이미지 페이지는 1 이상, 크기는 24, 48, 96이어야 합니다.");
+        }
+
+        return mediaRepository.SearchAsync(query, cancellationToken);
+    }
+
     public async Task<MediaAsset> UploadAsync(
         Guid contentId,
         Stream source,
@@ -72,14 +82,18 @@ public sealed class MediaService(
     public async Task<MediaAsset> UpdateAsync(
         Guid contentId,
         Guid mediaId,
-        string? description,
-        bool isPublicAllowed,
+        UpdateMediaMetadataRequest request,
         CancellationToken cancellationToken)
     {
         var media = await mediaRepository.FindAsync(contentId, mediaId, false, cancellationToken)
             ?? throw new NotFoundException("이미지를 찾을 수 없습니다.");
-        media.Description = description?.Trim();
-        media.IsPublicAllowed = isPublicAllowed;
+        ContentService.EnsureRowVersion(
+            new Content { RowVersion = media.RowVersion },
+            request.RowVersion);
+        media.Description = request.Description?.Trim();
+        media.IsPublicAllowed = request.IsPublicAllowed;
+        media.IsSelected = request.IsSelected;
+        media.SourceTimestampMs = request.SourceTimestampMs;
         await mediaRepository.SaveChangesAsync(cancellationToken);
         return media;
     }

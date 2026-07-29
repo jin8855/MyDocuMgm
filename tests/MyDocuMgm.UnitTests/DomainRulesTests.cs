@@ -15,7 +15,7 @@ public sealed class DomainRulesTests
             ["PLACE", "COOKING", "EXERCISE", "CLEANING_LAUNDRY", "TRAVEL", "PHOTO", "STUDY", "PRODUCT", "PHONE_COMPUTER", "TIP", "OTHER"],
             CategoryCatalog.All.Select(category => category.Code));
         Assert.Equal(
-            ["가볼곳", "요리", "운동", "청소&세탁", "여행", "사진", "공부", "제품", "폰·컴퓨터", "팁", "기타"],
+            ["가볼곳", "요리", "운동", "청소&세탁", "여행", "사진", "공부", "제품", "폰&컴", "팁", "기타"],
             CategoryCatalog.All.Select(category => category.DisplayName));
     }
 
@@ -95,5 +95,37 @@ public sealed class DomainRulesTests
         content.Restore();
         Assert.False(content.IsDeleted);
         Assert.Null(content.DeletedAtUtc);
+    }
+
+    [Fact]
+    public void Workflow_HasSevenOrderedSteps_AndBlocksSkipping()
+    {
+        Assert.Equal(
+            [WorkflowStep.URL, WorkflowStep.ANALYSIS_REVIEW, WorkflowStep.CATEGORY_EDIT,
+             WorkflowStep.MEDIA, WorkflowStep.DETAIL, WorkflowStep.BLOG_DRAFT, WorkflowStep.COMPLETED],
+            WorkflowStepRules.All);
+
+        var content = new Content();
+        content.MoveTo(WorkflowStep.ANALYSIS_REVIEW);
+        Assert.Equal(WorkflowStep.ANALYSIS_REVIEW, content.CurrentWorkflowStep);
+        Assert.Throws<DomainRuleException>(() => content.MoveTo(WorkflowStep.DETAIL));
+    }
+
+    [Fact]
+    public void ContentStep_RejectsDeletedOrForeignMedia()
+    {
+        var contentId = Guid.NewGuid();
+        var step = new ContentStep { ContentId = contentId };
+        var deleted = new MediaAsset { ContentId = contentId };
+        deleted.SoftDelete();
+
+        Assert.Equal(
+            "DELETED_MEDIA_NOT_ASSIGNABLE",
+            Assert.Throws<DomainRuleException>(() => step.AssignMedia(deleted)).Code);
+
+        var foreign = new MediaAsset { ContentId = Guid.NewGuid() };
+        Assert.Equal(
+            "MEDIA_CONTENT_MISMATCH",
+            Assert.Throws<DomainRuleException>(() => step.AssignMedia(foreign)).Code);
     }
 }

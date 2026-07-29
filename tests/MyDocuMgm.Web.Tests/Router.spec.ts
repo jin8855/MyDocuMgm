@@ -1,14 +1,15 @@
-import { routes } from '../../src/MyDocuMgm.Web/src/router'
+import { routes } from '../../src/MyDocuMgm.Web/src/app/router'
 
 describe('router', () => {
   it('exposes all Phase 1A screens', () => {
     expect(routes.map((route) => route.path)).toEqual([
       '/',
       '/contents',
-      '/contents/new',
+      '/categories',
+      '/mobile',
+      '/workflow/:id/:step',
       '/contents/:id',
-      '/contents/:id/edit',
-      '/contents/:id/media',
+      '/error',
     ])
   })
 })

@@ -2,8 +2,18 @@ using MyDocuMgm.Domain;
 
 namespace MyDocuMgm.Application;
 
+public enum SearchScope
+{
+    ALL,
+    TAG
+}
+
 public sealed record ContentQuery(
-    string? Search,
+    string? Keyword,
+    string? MajorCategory,
+    string? AttributeKey,
+    string? AttributeValue,
+    SearchScope SearchScope,
     Guid? CategoryId,
     ContentStatus? Status,
     bool? IsFavorite,
@@ -20,8 +30,11 @@ public sealed record ContentSummary(
     ContentStatus Status,
     ContentVisibility Visibility,
     bool IsFavorite,
+    WorkflowStep CurrentWorkflowStep,
+    string BlogDraftStatus,
     DateTime UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    IReadOnlyList<string> Tags);
 
 public sealed record ContentDetail(
     Guid Id,
@@ -34,6 +47,7 @@ public sealed record ContentDetail(
     ContentVisibility Visibility,
     bool IsFavorite,
     ExperienceStatus ExperienceStatus,
+    WorkflowStep CurrentWorkflowStep,
     bool IsDeleted,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
@@ -52,7 +66,10 @@ public sealed record SaveContentRequest(
     IReadOnlyList<string>? Tags,
     string? RowVersion);
 
-public sealed record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
+public sealed record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize)
+{
+    public int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+}
 
 public interface IContentRepository
 {
@@ -67,9 +84,65 @@ public interface IMediaAssetRepository
 {
     Task<MediaAsset?> FindAsync(Guid contentId, Guid mediaId, bool includeDeleted, CancellationToken cancellationToken);
     Task<IReadOnlyList<MediaAsset>> ListAsync(Guid contentId, bool includeDeleted, CancellationToken cancellationToken);
+    Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken);
     Task AddAsync(MediaAsset media, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
+
+public enum MediaFilter
+{
+    ALL,
+    SELECTED,
+    DUPLICATE
+}
+
+public enum MediaSort
+{
+    TIME_ASC,
+    TIME_DESC
+}
+
+public sealed record MediaQuery(
+    Guid ContentId,
+    MediaFilter Filter = MediaFilter.ALL,
+    MediaSort Sort = MediaSort.TIME_ASC,
+    int Page = 1,
+    int PageSize = 24);
+
+public sealed record MediaItemDto(
+    Guid Id,
+    string OriginalFileName,
+    string ThumbnailUrl,
+    string MimeType,
+    long SizeBytes,
+    int Width,
+    int Height,
+    int SortOrder,
+    long? SourceTimestampMs,
+    bool IsSelected,
+    bool IsPublicAllowed,
+    string? Description,
+    MediaStorageStatus StorageStatus,
+    string Sha256,
+    string RowVersion);
+
+public sealed record MediaPage(
+    IReadOnlyList<MediaItemDto> Items,
+    int TotalCount,
+    int SelectedCount,
+    int DuplicateCount,
+    int Page,
+    int PageSize)
+{
+    public int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+}
+
+public sealed record UpdateMediaMetadataRequest(
+    string? Description,
+    bool IsPublicAllowed,
+    bool IsSelected,
+    long? SourceTimestampMs,
+    string RowVersion);
 
 public sealed record StoredMedia(
     string StoredFileName,

@@ -1,0 +1,34 @@
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 236px minmax(0, 1fr); }
+.sidebar { position: sticky; top: 0; height: 100vh; padding: 26px 18px; background: var(--forest); color: white; }
+.brand { display: block; margin: 0 10px 34px; }
+.brand { color: white; text-decoration: none; }
+.brand > span:last-child { display: inline-grid; margin-left: 9px; }
+.brand-symbol { font-size: 24px; }
+.brand small { display: block; color: #a9cbb9; margin-bottom: 4px; font-size: 11px; letter-spacing: .1em; }
+.brand strong { font-size: 23px; letter-spacing: -.04em; }
+.side-nav { display: grid; gap: 7px; }
+.side-nav a { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 9px; text-decoration: none; color: #c8dace; font-weight: 720; }
+.side-nav a:hover, .side-nav a.router-link-active { color: white; background: rgb(255 255 255 / 11%); }
+.side-nav span { width: 24px; text-align: center; }
+.shell-main { min-width: 0; }
+.workspace-header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: rgb(255 255 255 / 90%); }
+.workspace-header > div { display: grid; gap: 2px; }
+.workspace-header span { color: var(--muted); font-size: 12px; }
+.sidebar-status { position: absolute; left: 28px; bottom: 24px; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px; color: #b8d0c3; font-size: 11px; }
+.sidebar-status small { grid-column: 2; color: #789c89; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: #83c99f; box-shadow: 0 0 0 4px rgb(131 201 159 / 12%); }
+.page { width: min(1420px, calc(100% - 48px)); margin: 0 auto; padding: 34px 0 48px; }
+.page-title { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 24px; }
+.page-title h1 { margin: 5px 0 8px; font-size: clamp(28px, 3vw, 42px); letter-spacing: -.045em; }
+.page-title p { color: var(--muted); margin-bottom: 0; }
+.compact-title h1 { font-size: 29px; }
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; padding: 16px; }
+  .sidebar-status { display: none; }
+  .brand { margin: 0 5px 14px; }
+  .side-nav { grid-template-columns: repeat(4, 1fr); }
+  .side-nav a { justify-content: center; padding: 10px 5px; font-size: 12px; }
+  .side-nav span { display: none; }
+  .page { width: min(100% - 28px, 1420px); padding-top: 22px; }
+}
