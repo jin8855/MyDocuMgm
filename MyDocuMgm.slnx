@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MyDocuMgm.Api/MyDocuMgm.Api.csproj" />
+    <Project Path="src/MyDocuMgm.Application/MyDocuMgm.Application.csproj" />
+    <Project Path="src/MyDocuMgm.Domain/MyDocuMgm.Domain.csproj" />
+    <Project Path="src/MyDocuMgm.Infrastructure/MyDocuMgm.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MyDocuMgm.IntegrationTests/MyDocuMgm.IntegrationTests.csproj" />
+    <Project Path="tests/MyDocuMgm.UnitTests/MyDocuMgm.UnitTests.csproj" />
+  </Folder>
+</Solution>
