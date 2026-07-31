@@ -21,10 +21,6 @@ const navigation = [
           <span aria-hidden="true">{{ item.icon }}</span>{{ item.label }}
         </RouterLink>
       </nav>
-      <div class="sidebar-status">
-        <span class="status-dot" /> Phase 1A Repair
-        <small>DB 비연결 fixture</small>
-      </div>
     </aside>
     <div class="shell-main">
       <header class="workspace-header">

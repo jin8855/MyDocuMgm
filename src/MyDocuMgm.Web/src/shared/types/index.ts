@@ -102,13 +102,3 @@ export interface MediaPage {
   pageSize: number
   totalPages: number
 }
-
-export const workflowSteps: { key: WorkflowStep; route: string; label: string }[] = [
-  { key: 'URL', route: 'url', label: 'URL' },
-  { key: 'ANALYSIS_REVIEW', route: 'analysis-review', label: '분석 검토' },
-  { key: 'CATEGORY_EDIT', route: 'category-edit', label: '분류별 편집' },
-  { key: 'MEDIA', route: 'media', label: '이미지' },
-  { key: 'DETAIL', route: 'detail', label: '자료 상세' },
-  { key: 'BLOG_DRAFT', route: 'blog-draft', label: '블로그 초안' },
-  { key: 'COMPLETED', route: 'completed', label: '완료' },
-]

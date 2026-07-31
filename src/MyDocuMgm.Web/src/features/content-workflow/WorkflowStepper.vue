@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { WorkflowStep } from '../../shared/types'
-import { workflowSteps } from '../../shared/types'
+import { workflowSteps } from '../../shared/presentation/labels'
 
 const props = defineProps<{ current: WorkflowStep; showTools?: boolean }>()
 const emit = defineEmits<{ edit: []; delete: []; close: [] }>()

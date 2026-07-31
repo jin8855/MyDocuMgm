@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '../shared/api/client'
 import type { ContentItem } from '../shared/types'
+import { workflowStepLabel } from '../shared/presentation/labels'
 
 const items = ref<ContentItem[]>([])
 onMounted(async () => { items.value = (await api.contents({ majorCategory: '', attributeKey: '', attributeValue: '', status: '', searchScope: 'ALL', keyword: '', page: 1, pageSize: 24 })).items })
@@ -22,7 +23,7 @@ onMounted(async () => { items.value = (await api.contents({ majorCategory: '', a
       <RouterLink v-for="item in items.slice(0, 6)" :key="item.id" class="task-row" :to="`/workflow/${item.id}/${item.currentWorkflowStep.toLowerCase().replaceAll('_', '-')}`">
         <span class="task-number">{{ String(items.indexOf(item) + 1).padStart(2, '0') }}</span>
         <span><small>{{ item.categoryDisplayName }}</small><strong>{{ item.title }}</strong></span>
-        <span class="badge">{{ item.currentWorkflowStep }}</span><span>{{ item.updatedAtUtc.slice(0, 10) }}</span><b>→</b>
+        <span class="badge">{{ workflowStepLabel(item.currentWorkflowStep) }}</span><span>{{ item.updatedAtUtc.slice(0, 10) }}</span><b>→</b>
       </RouterLink>
     </section>
   </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Category, SearchQuery } from '../../shared/types'
+import { contentStatusOptions } from '../../shared/presentation/labels'
 
 const props = defineProps<{ categories: Category[]; modelValue: SearchQuery }>()
 const emit = defineEmits<{ 'update:modelValue': [value: SearchQuery]; search: []; reset: [] }>()
@@ -37,7 +38,8 @@ function update<K extends keyof SearchQuery>(key: K, value: SearchQuery[K]) {
       </label>
       <label>상태
         <select :value="modelValue.status" @change="update('status', ($event.target as HTMLSelectElement).value)">
-          <option value="">전체</option><option value="INBOX">받은 기록</option><option value="REVIEW_REQUIRED">확인 필요</option><option value="READY">정리 완료</option><option value="ARCHIVED">보관</option>
+          <option value="">전체</option>
+          <option v-for="status in contentStatusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
         </select>
       </label>
       <label>검색 범위

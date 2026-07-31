@@ -1,6 +1,27 @@
 import { api } from '../../src/MyDocuMgm.Web/src/shared/api/client'
+import {
+  contentStatusLabel,
+  contentStatusOptions,
+  workflowStepLabel,
+  workflowStepLabels,
+} from '../../src/MyDocuMgm.Web/src/shared/presentation/labels'
 
 describe('Phase 1A repair mock contract', () => {
+  it('maps workflow and status codes through one presentation mapper', () => {
+    expect(workflowStepLabels).toEqual({
+      URL: 'URL',
+      ANALYSIS_REVIEW: '분석 검토',
+      CATEGORY_EDIT: '분류별 편집',
+      MEDIA: '이미지',
+      DETAIL: '자료 상세',
+      BLOG_DRAFT: '블로그 초안',
+      COMPLETED: '완료',
+    })
+    expect(workflowStepLabel('CATEGORY_EDIT')).toBe('분류별 편집')
+    expect(contentStatusLabel('REVIEW_REQUIRED')).toBe('검토 필요')
+    expect(contentStatusOptions).toContainEqual({ value: 'REVIEW_REQUIRED', label: '검토 필요' })
+  })
+
   it('exposes exactly the fixed eleven categories and the corrected phone label', async () => {
     const categories = await api.categories()
 

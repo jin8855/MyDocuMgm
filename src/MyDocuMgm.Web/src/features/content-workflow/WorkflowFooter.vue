@@ -4,7 +4,7 @@ const emit = defineEmits<{ previous: []; save: []; next: [] }>()
 </script>
 
 <template>
-  <footer class="workflow-footer">
+  <footer class="workflow-footer" data-testid="workflow-footer">
     <button v-if="previousLabel" class="button" @click="emit('previous')">← 이전 · {{ previousLabel }}</button>
     <span v-else />
     <div>

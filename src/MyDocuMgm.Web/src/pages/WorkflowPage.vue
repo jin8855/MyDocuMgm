@@ -17,7 +17,7 @@ import ThumbnailGrid from '../features/media-management/ThumbnailGrid.vue'
 import { useMediaState } from '../features/media-management/useMediaState'
 import { api } from '../shared/api/client'
 import type { ContentItem, CookingIngredient, WorkflowStep } from '../shared/types'
-import { workflowSteps } from '../shared/types'
+import { workflowSteps } from '../shared/presentation/labels'
 import { cloneValue } from '../shared/utils/clone'
 
 const props = defineProps<{ id: string; step: string }>()

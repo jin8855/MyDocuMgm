@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CookingIngredient } from '../../shared/types'
+import IconButton from '../../shared/components/IconButton.vue'
 
 defineProps<{ ingredients: CookingIngredient[] }>()
 const emit = defineEmits<{ edit: [value: CookingIngredient]; unset: [value: CookingIngredient]; add: [] }>()
@@ -11,8 +12,8 @@ const emit = defineEmits<{ edit: [value: CookingIngredient]; unset: [value: Cook
     <div class="chip-list">
       <span v-for="ingredient in ingredients.filter((item) => item.isPrimary)" :key="ingredient.id" class="query-chip">
         {{ ingredient.name }}
-        <button title="주재료 이름 수정" :aria-label="`${ingredient.name} 주재료 이름 수정`" @click="emit('edit', ingredient)">✎</button>
-        <button title="주재료 지정 해제" :aria-label="`${ingredient.name} 주재료 지정 해제`" @click="emit('unset', ingredient)">×</button>
+        <IconButton icon="edit" :label="`${ingredient.name} 주재료 이름 수정`" @click="emit('edit', ingredient)" />
+        <IconButton icon="close" :label="`${ingredient.name} 주재료 지정 해제`" @click="emit('unset', ingredient)" />
       </span>
     </div>
   </section>

@@ -1,11 +1,21 @@
 /*
   MyDocuMgm Phase 1 verification (SELECT only).
-  Every result set is gated by DB_NAME(). On a wrong target, only the first result reports 0
-  and all following result sets return no rows.
+  The wrong-database gate returns one read-only result and stops the batch before
+  any MyDocuMgm-specific verification. Following queries use sys catalog views only.
 */
+IF DB_NAME() <> N'MyDocuMgm'
+BEGIN
+    SELECT
+        DB_NAME() AS CurrentDatabase,
+        CAST(0 AS bit) AS IsExpectedDatabase,
+        N'VERIFICATION_STOPPED_WRONG_DATABASE' AS VerificationGate;
+    RETURN;
+END;
+
 SELECT
     DB_NAME() AS CurrentDatabase,
-    CASE WHEN DB_NAME() = N'MyDocuMgm' THEN 1 ELSE 0 END AS IsExpectedDatabase;
+    CAST(1 AS bit) AS IsExpectedDatabase,
+    N'VERIFICATION_CONTINUED' AS VerificationGate;
 
 SELECT
     expected.TableName,
@@ -22,30 +32,26 @@ FROM (VALUES
 LEFT JOIN sys.tables AS tables
     ON tables.name = expected.TableName
    AND SCHEMA_NAME(tables.schema_id) = N'dbo'
-WHERE DB_NAME() = N'MyDocuMgm'
 ORDER BY expected.TableName;
 
 SELECT
-    Id,
-    SortOrder,
-    Code,
-    DisplayName,
-    IsActive
-FROM dbo.Categories
-WHERE DB_NAME() = N'MyDocuMgm'
-ORDER BY SortOrder;
-
-SELECT
-    categories.Code AS CategoryCode,
-    attributes.AttributeKey,
-    attributes.DisplayName,
-    attributes.SortOrder,
-    attributes.IsActive,
-    attributes.IsSearchable
-FROM dbo.CategorySearchAttributes AS attributes
-INNER JOIN dbo.Categories AS categories ON categories.Id = attributes.CategoryId
-WHERE DB_NAME() = N'MyDocuMgm'
-ORDER BY categories.SortOrder, attributes.SortOrder;
+    tables.name AS TableName,
+    columns.name AS ColumnName,
+    types.name AS DataType,
+    columns.max_length AS MaxLength,
+    columns.is_nullable AS IsNullable,
+    columns.is_identity AS IsIdentity
+FROM sys.columns AS columns
+INNER JOIN sys.tables AS tables ON tables.object_id = columns.object_id
+INNER JOIN sys.types AS types ON types.user_type_id = columns.user_type_id
+WHERE SCHEMA_NAME(tables.schema_id) = N'dbo'
+  AND (
+      columns.name IN (
+          N'CurrentWorkflowStep', N'IngredientType', N'IsPrimary',
+          N'SourceTimestampMs', N'IsSelected', N'MediaAssetId', N'RowVersion')
+      OR tables.name = N'CategorySearchAttributes'
+  )
+ORDER BY tables.name, columns.column_id;
 
 SELECT
     tables.name AS TableName,
@@ -60,7 +66,7 @@ INNER JOIN sys.index_columns AS index_columns
 INNER JOIN sys.columns AS columns
     ON columns.object_id = index_columns.object_id
    AND columns.column_id = index_columns.column_id
-WHERE DB_NAME() = N'MyDocuMgm'
+WHERE SCHEMA_NAME(tables.schema_id) = N'dbo'
   AND indexes.is_hypothetical = 0
   AND indexes.name IS NOT NULL
 GROUP BY tables.name, indexes.name, indexes.is_unique
@@ -71,8 +77,7 @@ SELECT
     name AS CheckConstraintName,
     definition AS CheckDefinition
 FROM sys.check_constraints
-WHERE DB_NAME() = N'MyDocuMgm'
-  AND OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
+WHERE OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
 ORDER BY TableName, CheckConstraintName;
 
 SELECT
@@ -81,19 +86,19 @@ SELECT
     OBJECT_NAME(foreign_keys.referenced_object_id) AS ParentTable,
     foreign_keys.delete_referential_action_desc AS DeleteAction
 FROM sys.foreign_keys AS foreign_keys
-WHERE DB_NAME() = N'MyDocuMgm'
-  AND OBJECT_SCHEMA_NAME(foreign_keys.parent_object_id) = N'dbo'
+WHERE OBJECT_SCHEMA_NAME(foreign_keys.parent_object_id) = N'dbo'
 ORDER BY ChildTable, ForeignKeyName;
 
 SELECT
-    tables.name AS TableName,
-    columns.name AS ColumnName,
-    types.name AS DataType,
-    columns.max_length AS MaxLength,
-    columns.is_nullable AS IsNullable
-FROM sys.columns AS columns
-INNER JOIN sys.tables AS tables ON tables.object_id = columns.object_id
-INNER JOIN sys.types AS types ON types.user_type_id = columns.user_type_id
-WHERE DB_NAME() = N'MyDocuMgm'
-  AND columns.name = N'RowVersion'
-ORDER BY tables.name;
+    history_table.name AS TableName,
+    migration_id.name AS MigrationIdColumn,
+    product_version.name AS ProductVersionColumn
+FROM sys.tables AS history_table
+INNER JOIN sys.columns AS migration_id
+    ON migration_id.object_id = history_table.object_id
+   AND migration_id.name = N'MigrationId'
+INNER JOIN sys.columns AS product_version
+    ON product_version.object_id = history_table.object_id
+   AND product_version.name = N'ProductVersion'
+WHERE SCHEMA_NAME(history_table.schema_id) = N'dbo'
+  AND history_table.name = N'__EFMigrationsHistory';

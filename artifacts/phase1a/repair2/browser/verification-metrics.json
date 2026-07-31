@@ -1,0 +1,54 @@
+{
+  "desktop1440x1000": {
+    "rawCodesHidden": true,
+    "expectedLabelsVisible": true,
+    "fixtureHidden": true,
+    "horizontalOverflow": false,
+    "footerClearancePx": {
+      "ingredientLastRow": 46,
+      "mediaEditor": 20,
+      "detailSheet": 20
+    }
+  },
+  "iconButtons": {
+    "editCount": 4,
+    "deleteCount": 4,
+    "sampleAccessibleName": "새우 재료 수정",
+    "titlePresent": true,
+    "visibleText": "",
+    "svgCount": 1,
+    "keyboardFocused": true,
+    "focusVisible": true,
+    "outlineStyle": "solid"
+  },
+  "mobile": {
+    "390x844": {
+      "documentWidth": 390,
+      "horizontalOverflow": false,
+      "desktopSidebarHidden": true,
+      "phoneFrameCount": 0,
+      "searchVisible": true,
+      "primaryIngredientChipVisible": true,
+      "cardCount": 2,
+      "detailRoute": "/workflow/demo/detail"
+    },
+    "412x915": {
+      "documentWidth": 412,
+      "horizontalOverflow": false,
+      "desktopSidebarHidden": true,
+      "phoneFrameCount": 0,
+      "searchVisible": true,
+      "primaryIngredientChipVisible": true,
+      "cardCount": 2
+    },
+    "workflowFooter390x844": {
+      "lastIngredientClearancePx": 39,
+      "lastIngredientOverlapped": false,
+      "allButtonsInsideViewport": true
+    }
+  },
+  "console": {
+    "errors": 0,
+    "warnings": 0
+  }
+}

@@ -17,6 +17,10 @@ body { min-width: 320px; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .48; }
+button:focus-visible, a:focus-visible {
+  outline: 3px solid #f1a178;
+  outline-offset: 3px;
+}
 h1, h2, h3, p { margin-top: 0; }
 a { color: inherit; }
 label { display: grid; gap: 7px; color: #44534c; font-size: 14px; font-weight: 650; }
@@ -51,6 +55,14 @@ textarea { resize: vertical; }
 .dialog h3, .dialog p { margin-bottom: 0; }
 .dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .icon-close { border: 0; background: transparent; font-size: 22px; }
+.app-icon { width: 18px; height: 18px; display: block; fill: currentColor; }
+.icon-button {
+  width: 34px; height: 34px; display: inline-grid; place-items: center; flex: 0 0 auto;
+  border: 1px solid #d7dfda; border-radius: 8px; background: #f7faf8; color: #2f5443;
+}
+.icon-button:hover { border-color: #81a491; background: #eaf3ee; }
+.icon-button.danger-icon { color: var(--danger); background: #fff7f7; }
+.icon-button.danger-icon:hover { border-color: #d69797; background: #fceaea; }
 @media (max-width: 720px) {
   .surface { padding: 17px; }
   .form-grid, .form-grid.three, .dialog-grid { grid-template-columns: 1fr; }

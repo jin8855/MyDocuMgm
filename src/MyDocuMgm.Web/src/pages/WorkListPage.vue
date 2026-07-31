@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import SearchPanel from '../features/content-search/SearchPanel.vue'
 import { api } from '../shared/api/client'
 import type { Category, ContentPage, SearchQuery } from '../shared/types'
+import { contentStatusLabel, workflowStepLabel } from '../shared/presentation/labels'
 
 const categories = ref<Category[]>([])
 const result = ref<ContentPage>({ items: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 1 })
@@ -24,7 +25,7 @@ onMounted(async () => { categories.value = await api.categories(); await search(
         <thead><tr><th>제목</th><th>대분류</th><th>현재 단계</th><th>상태</th><th>블로그 초안</th><th>태그</th><th>수정일</th></tr></thead>
         <tbody><tr v-for="item in result.items" :key="item.id">
           <td><RouterLink :to="`/workflow/${item.id}/${item.currentWorkflowStep.toLowerCase().replaceAll('_', '-')}`"><strong>{{ item.title }}</strong><small>{{ item.shortSummary }}</small></RouterLink></td>
-          <td>{{ item.categoryDisplayName }}</td><td><span class="badge accent">{{ item.currentWorkflowStep }}</span></td><td><span class="badge">{{ item.status }}</span></td><td>{{ item.blogDraftStatus }}</td><td><span v-for="tag in item.tags" :key="tag" class="tag">#{{ tag }}</span></td><td>{{ item.updatedAtUtc.slice(0, 10) }}</td>
+          <td>{{ item.categoryDisplayName }}</td><td><span class="badge accent">{{ workflowStepLabel(item.currentWorkflowStep) }}</span></td><td><span class="badge">{{ contentStatusLabel(item.status) }}</span></td><td>{{ item.blogDraftStatus }}</td><td><span v-for="tag in item.tags" :key="tag" class="tag">#{{ tag }}</span></td><td>{{ item.updatedAtUtc.slice(0, 10) }}</td>
         </tr></tbody>
       </table></div>
     </section>

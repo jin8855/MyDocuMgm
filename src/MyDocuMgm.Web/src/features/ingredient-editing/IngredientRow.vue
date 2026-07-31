@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CookingIngredient } from '../../shared/types'
+import IconButton from '../../shared/components/IconButton.vue'
 
 defineProps<{ ingredient: CookingIngredient }>()
 const emit = defineEmits<{ edit: [value: CookingIngredient]; delete: [value: CookingIngredient] }>()
@@ -12,8 +13,8 @@ const emit = defineEmits<{ edit: [value: CookingIngredient]; delete: [value: Coo
     <td>{{ ingredient.quantity || '—' }}</td>
     <td>{{ ingredient.ingredientType }}</td>
     <td class="icon-actions">
-      <button title="재료 수정" :aria-label="`${ingredient.name} 재료 수정`" @click="emit('edit', ingredient)">✎<span class="icon-tip">수정</span></button>
-      <button class="danger-icon" title="재료 삭제" :aria-label="`${ingredient.name} 재료 삭제`" @click="emit('delete', ingredient)">⌫<span class="icon-tip">삭제</span></button>
+      <IconButton icon="edit" :label="`${ingredient.name} 재료 수정`" @click="emit('edit', ingredient)" />
+      <IconButton icon="delete" tone="danger" :label="`${ingredient.name} 재료 삭제`" @click="emit('delete', ingredient)" />
     </td>
   </tr>
 </template>
