@@ -16,6 +16,7 @@ public sealed record ContentQuery(
     SearchScope SearchScope,
     Guid? CategoryId,
     ContentStatus? Status,
+    WorkflowStep? WorkflowStep,
     bool? IsFavorite,
     bool IncludeDeleted = false,
     int Page = 1,
@@ -77,6 +78,7 @@ public interface IContentRepository
     Task<Content?> FindAsync(Guid id, bool includeDeleted, CancellationToken cancellationToken);
     Task AddAsync(Content content, CancellationToken cancellationToken);
     Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken);
+    Task AddTagAsync(Tag tag, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 

@@ -29,6 +29,7 @@ public sealed class MediaCompensationTests
         public Task<Content?> FindAsync(Guid id, bool includeDeleted, CancellationToken cancellationToken) =>
             Task.FromResult<Content?>(content);
         public Task AddAsync(Content value, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task AddTagAsync(Tag tag, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }

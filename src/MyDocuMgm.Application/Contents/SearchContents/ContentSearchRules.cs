@@ -22,6 +22,11 @@ public static class ContentSearchRules
             throw new DomainRuleException("INVALID_MAJOR_CATEGORY", "알 수 없는 대분류 코드입니다.");
         }
 
+        if (query.WorkflowStep is { } workflowStep && !Enum.IsDefined(workflowStep))
+        {
+            throw new DomainRuleException("INVALID_WORKFLOW_STEP", "알 수 없는 workflow 단계입니다.");
+        }
+
         if (!string.IsNullOrWhiteSpace(query.AttributeKey))
         {
             if (string.IsNullOrWhiteSpace(query.MajorCategory) ||

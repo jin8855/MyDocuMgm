@@ -24,13 +24,14 @@ const props = defineProps<{ id: string; step: string }>()
 const router = useRouter()
 const content = ref<ContentItem>()
 const ingredients = ref<CookingIngredient[]>([])
+const loadError = ref('')
 const ingredientDialogOpen = ref(false)
 const editingIngredient = ref<CookingIngredient>()
 const dirty = ref(false)
 const showUnsaved = ref(false)
 const showDelete = ref(false)
 const pendingAction = ref<null | (() => void)>(null)
-const mediaState = useMediaState()
+const mediaState = useMediaState(() => props.id)
 
 const current = computed<WorkflowStep>(() =>
   workflowSteps.find((item) => item.route === props.step)?.key ?? 'URL')
@@ -39,10 +40,18 @@ const previous = computed(() => currentIndex.value > 0 ? workflowSteps[currentIn
 const next = computed(() => currentIndex.value < workflowSteps.length - 1 ? workflowSteps[currentIndex.value + 1] : undefined)
 
 async function load() {
-  content.value = await api.content(props.id)
-  ingredients.value = await api.ingredients()
-  if (current.value === 'MEDIA') await mediaState.load()
-  dirty.value = false
+  loadError.value = ''
+  content.value = undefined
+  ingredients.value = []
+  try {
+    content.value = await api.content(props.id)
+    ingredients.value = await api.ingredients(props.id)
+    if (current.value === 'MEDIA') await mediaState.load()
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : '콘텐츠를 불러오지 못했습니다.'
+  } finally {
+    dirty.value = false
+  }
 }
 
 function navigate(route?: string) {
@@ -82,22 +91,22 @@ function editIngredient(value?: CookingIngredient) {
 }
 
 async function saveIngredient(value: CookingIngredient) {
-  await api.saveIngredient(value)
-  ingredients.value = await api.ingredients()
+  await api.saveIngredient(props.id, value)
+  ingredients.value = await api.ingredients(props.id)
   ingredientDialogOpen.value = false
   dirty.value = true
 }
 
 async function deleteIngredient(value: CookingIngredient) {
   if (!window.confirm(`‘${value.name}’ 재료를 삭제하시겠습니까?`)) return
-  await api.deleteIngredient(value.id)
-  ingredients.value = await api.ingredients()
+  await api.deleteIngredient(props.id, value)
+  ingredients.value = await api.ingredients(props.id)
   dirty.value = true
 }
 
 async function unsetPrimary(value: CookingIngredient) {
-  await api.saveIngredient({ ...value, isPrimary: false })
-  ingredients.value = await api.ingredients()
+  await api.saveIngredient(props.id, { ...value, isPrimary: false })
+  ingredients.value = await api.ingredients(props.id)
   dirty.value = true
 }
 
@@ -132,7 +141,13 @@ onMounted(load)
       <span v-if="dirty" class="dirty-indicator">저장하지 않은 변경</span>
     </header>
 
-    <UrlStage v-if="current === 'URL'" @dirty="markDirty" />
+    <section v-if="loadError" class="surface empty-state" role="alert">
+      <h2>콘텐츠를 불러오지 못했습니다</h2>
+      <p>{{ loadError }}</p>
+      <button class="button" @click="router.push('/contents')">작업목록으로 돌아가기</button>
+    </section>
+
+    <UrlStage v-else-if="current === 'URL'" @dirty="markDirty" />
     <AnalysisReviewStage v-else-if="current === 'ANALYSIS_REVIEW'" @dirty="markDirty" />
 
     <template v-else-if="current === 'CATEGORY_EDIT'">
@@ -187,6 +202,7 @@ onMounted(load)
     <CompletedStage v-else @close="router.push('/contents')" />
 
     <WorkflowFooter
+      v-if="!loadError"
       :previous-label="previous?.label"
       :next-label="next?.label"
       :save-label="current === 'COMPLETED' ? '완료 상태 저장' : '임시저장'"

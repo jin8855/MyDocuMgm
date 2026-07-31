@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Category, SearchQuery } from '../../shared/types'
-import { contentStatusOptions } from '../../shared/presentation/labels'
+import { contentStatusOptions, workflowStepOptions } from '../../shared/presentation/labels'
 
 const props = defineProps<{ categories: Category[]; modelValue: SearchQuery }>()
 const emit = defineEmits<{ 'update:modelValue': [value: SearchQuery]; search: []; reset: [] }>()
@@ -40,6 +40,15 @@ function update<K extends keyof SearchQuery>(key: K, value: SearchQuery[K]) {
         <select :value="modelValue.status" @change="update('status', ($event.target as HTMLSelectElement).value)">
           <option value="">전체</option>
           <option v-for="status in contentStatusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
+        </select>
+      </label>
+      <label>작업 단계
+        <select
+          :value="modelValue.workflowStep"
+          @change="update('workflowStep', ($event.target as HTMLSelectElement).value === '' ? '' : Number(($event.target as HTMLSelectElement).value))"
+        >
+          <option value="">전체</option>
+          <option v-for="step in workflowStepOptions" :key="step.value" :value="step.value">{{ step.label }}</option>
         </select>
       </label>
       <label>검색 범위

@@ -15,6 +15,7 @@ public sealed class EfContentRepository(MyDocuMgmDbContext dbContext) : IContent
             .Where(content => query.IncludeDeleted || !content.IsDeleted)
             .Where(content => query.CategoryId == null || content.CategoryId == query.CategoryId)
             .Where(content => query.Status == null || content.Status == query.Status)
+            .Where(content => query.WorkflowStep == null || content.CurrentWorkflowStep == query.WorkflowStep)
             .Where(content => query.IsFavorite == null || content.IsFavorite == query.IsFavorite);
 
         if (!string.IsNullOrWhiteSpace(query.MajorCategory))
@@ -178,6 +179,9 @@ public sealed class EfContentRepository(MyDocuMgmDbContext dbContext) : IContent
 
     public Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken) =>
         dbContext.Tags.SingleOrDefaultAsync(tag => tag.NormalizedName == normalizedName, cancellationToken);
+
+    public Task AddTagAsync(Tag tag, CancellationToken cancellationToken) =>
+        dbContext.Tags.AddAsync(tag, cancellationToken).AsTask();
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {

@@ -50,11 +50,12 @@ public sealed class Phase1RepairRulesTests
         int pageSize = 24,
         string? category = null,
         string? key = null) =>
-        new(null, category, key, null, SearchScope.ALL, null, null, null, PageSize: pageSize);
+        new(null, category, key, null, SearchScope.ALL, null, null, null, null, PageSize: pageSize);
 
     private sealed class EmptyContentRepository : IContentRepository
     {
         public Task AddAsync(Content content, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task AddTagAsync(Tag tag, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<Content?> FindAsync(Guid id, bool includeDeleted, CancellationToken cancellationToken) => Task.FromResult<Content?>(null);
         public Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken) => Task.FromResult<Tag?>(null);
         public Task<PagedResult<ContentSummary>> ListAsync(ContentQuery query, CancellationToken cancellationToken) =>

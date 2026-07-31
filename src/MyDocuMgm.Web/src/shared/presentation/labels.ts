@@ -1,4 +1,4 @@
-import type { ContentStatus, WorkflowStep } from '../types'
+import type { ContentStatus, ContentStatusValue, WorkflowStep, WorkflowStepValue } from '../types'
 
 export const workflowStepLabels: Record<WorkflowStep, string> = {
   URL: 'URL',
@@ -30,5 +30,41 @@ export const workflowSteps: { key: WorkflowStep; route: string; label: string }[
   { key: 'COMPLETED', route: 'completed', label: workflowStepLabels.COMPLETED },
 ]
 
-export const workflowStepLabel = (value: WorkflowStep) => workflowStepLabels[value]
-export const contentStatusLabel = (value: ContentStatus) => contentStatusLabels[value]
+const workflowStepOrder = workflowSteps.map((step) => step.key)
+const statusByNumber: Partial<Record<number, ContentStatus>> = {
+  0: 'INBOX',
+  1: 'REVIEW_REQUIRED',
+  2: 'READY',
+  5: 'ARCHIVED',
+}
+
+export const workflowStepOptions = workflowSteps.map((step, value) => ({
+  value,
+  label: step.label,
+}))
+
+export function resolveWorkflowStep(value: WorkflowStepValue | string): WorkflowStep | undefined {
+  if (typeof value === 'number') return workflowStepOrder[value]
+  return Object.prototype.hasOwnProperty.call(workflowStepLabels, value)
+    ? value as WorkflowStep
+    : undefined
+}
+
+export function workflowStepLabel(value: WorkflowStepValue | string): string {
+  const step = resolveWorkflowStep(value)
+  return step ? workflowStepLabels[step] : '알 수 없는 단계'
+}
+
+export function workflowStepRoute(value: WorkflowStepValue | string): string {
+  const step = resolveWorkflowStep(value)
+  return workflowSteps.find((item) => item.key === step)?.route ?? 'url'
+}
+
+export function contentStatusLabel(value: ContentStatusValue | string): string {
+  const status = typeof value === 'number'
+    ? statusByNumber[value]
+    : Object.prototype.hasOwnProperty.call(contentStatusLabels, value)
+      ? value as ContentStatus
+      : undefined
+  return status ? contentStatusLabels[status] : '알 수 없는 상태'
+}

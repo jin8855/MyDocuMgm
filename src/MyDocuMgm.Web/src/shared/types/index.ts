@@ -1,5 +1,7 @@
 export type WorkflowStep = 'URL' | 'ANALYSIS_REVIEW' | 'CATEGORY_EDIT' | 'MEDIA' | 'DETAIL' | 'BLOG_DRAFT' | 'COMPLETED'
 export type ContentStatus = 'INBOX' | 'REVIEW_REQUIRED' | 'READY' | 'ARCHIVED'
+export type WorkflowStepValue = WorkflowStep | number
+export type ContentStatusValue = ContentStatus | number
 export type SearchScope = 'ALL' | 'TAG'
 export type MediaFilter = 'ALL' | 'SELECTED' | 'DUPLICATE'
 export type MediaSort = 'TIME_ASC' | 'TIME_DESC'
@@ -33,11 +35,11 @@ export interface ContentItem {
   title: string
   shortSummary: string | null
   detailContent: string | null
-  status: ContentStatus
+  status: ContentStatusValue
   visibility: 'PRIVATE' | 'PUBLIC_ALLOWED'
   isFavorite: boolean
   experienceStatus: 'NONE' | 'WANT_TO_TRY' | 'TRIED'
-  currentWorkflowStep: WorkflowStep
+  currentWorkflowStep: WorkflowStepValue
   blogDraftStatus: string
   updatedAtUtc: string
   createdAtUtc: string
@@ -58,6 +60,7 @@ export interface SearchQuery {
   attributeKey: string
   attributeValue: string
   status: string
+  workflowStep: '' | number
   searchScope: SearchScope
   keyword: string
   page: number

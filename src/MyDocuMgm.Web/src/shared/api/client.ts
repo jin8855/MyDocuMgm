@@ -10,9 +10,20 @@ import type {
   SearchQuery,
 } from '../types'
 import { cloneValue } from '../utils/clone'
+import { resolveWorkflowStep } from '../presentation/labels'
 
 const mockEnabled = import.meta.env.MODE === 'test' || import.meta.env.VITE_USE_MOCK_API === 'true'
 const rowVersion = 'AAAAAAAAB9E='
+const mockContentId = 'demo'
+const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function contentPath(contentId: string): string {
+  const value = contentId.trim()
+  if (!value || (!mockEnabled && !guidPattern.test(value))) {
+    throw new Error('올바른 콘텐츠 ID가 필요합니다.')
+  }
+  return `/api/contents/${encodeURIComponent(value)}`
+}
 
 const categorySource = [
   ['PLACE', '가볼곳'], ['COOKING', '요리'], ['EXERCISE', '운동'], ['CLEANING_LAUNDRY', '청소&세탁'],
@@ -146,6 +157,11 @@ export const api = {
     let result = [...contents]
     if (query.majorCategory) result = result.filter((item) => item.categoryCode === query.majorCategory)
     if (query.status) result = result.filter((item) => item.status === query.status)
+    if (query.workflowStep !== '') {
+      const workflowStep = resolveWorkflowStep(query.workflowStep)
+      if (!workflowStep) throw new Error('알 수 없는 workflow 단계입니다.')
+      result = result.filter((item) => resolveWorkflowStep(item.currentWorkflowStep) === workflowStep)
+    }
     if (query.keyword) {
       const term = query.keyword.toLocaleLowerCase('ko')
       result = result.filter((item) => query.searchScope === 'TAG'
@@ -167,30 +183,43 @@ export const api = {
   },
   async content(id: string): Promise<ContentItem> {
     if (mockEnabled) {
-      const item = contents.find((value) => value.id === id) ?? contents[0]
+      const item = contents.find((value) => value.id === id)
+      if (!item) throw new Error('콘텐츠를 찾을 수 없습니다.')
       return cloneValue(item)
     }
-    return request(`/api/contents/${id}`)
+    return request(contentPath(id))
   },
-  async ingredients(): Promise<CookingIngredient[]> {
-    return mockEnabled ? cloneValue(ingredients) : request('/api/contents/demo/ingredients')
+  async ingredients(contentId: string): Promise<CookingIngredient[]> {
+    if (mockEnabled) return contentId === mockContentId ? cloneValue(ingredients) : []
+    return request(`${contentPath(contentId)}/ingredients`)
   },
-  async saveIngredient(value: CookingIngredient): Promise<CookingIngredient> {
+  async saveIngredient(contentId: string, value: CookingIngredient): Promise<CookingIngredient> {
     if (mockEnabled) {
+      if (contentId !== mockContentId) throw new Error('콘텐츠와 재료가 일치하지 않습니다.')
       const exists = ingredients.some((item) => item.id === value.id)
       ingredients = exists
         ? ingredients.map((item) => item.id === value.id ? cloneValue(value) : item)
         : [...ingredients, { ...cloneValue(value), id: `ing-${Date.now()}`, sortOrder: ingredients.length + 1 }]
       return cloneValue(value)
     }
-    return request(`/api/contents/demo/ingredients/${value.id}`, { method: 'PUT', body: JSON.stringify(value) })
+    const path = `${contentPath(contentId)}/ingredients`
+    return value.id
+      ? request(`${path}/${encodeURIComponent(value.id)}`, { method: 'PUT', body: JSON.stringify(value) })
+      : request(path, { method: 'POST', body: JSON.stringify(value) })
   },
-  async deleteIngredient(id: string): Promise<void> {
-    if (mockEnabled) { ingredients = ingredients.filter((item) => item.id !== id); return }
-    return request(`/api/contents/demo/ingredients/${id}?rowVersion=${encodeURIComponent(rowVersion)}`, { method: 'DELETE' })
+  async deleteIngredient(contentId: string, value: CookingIngredient): Promise<void> {
+    if (mockEnabled) {
+      if (contentId !== mockContentId) throw new Error('콘텐츠와 재료가 일치하지 않습니다.')
+      ingredients = ingredients.filter((item) => item.id !== value.id)
+      return
+    }
+    return request(`${contentPath(contentId)}/ingredients/${encodeURIComponent(value.id)}?rowVersion=${encodeURIComponent(value.rowVersion)}`, { method: 'DELETE' })
   },
-  async media(filter: MediaFilter, sort: MediaSort, page: number, pageSize: number): Promise<MediaPage> {
-    if (!mockEnabled) return request(`/api/contents/demo/media?filter=${filter}&sort=${sort}&page=${page}&pageSize=${pageSize}`)
+  async media(contentId: string, filter: MediaFilter, sort: MediaSort, page: number, pageSize: number): Promise<MediaPage> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/media?filter=${filter}&sort=${sort}&page=${page}&pageSize=${pageSize}`)
+    if (contentId !== mockContentId) {
+      return { items: [], totalCount: 0, selectedCount: 0, duplicateCount: 0, page, pageSize, totalPages: 1 }
+    }
     const duplicateHashes = new Set(media.filter((item, index, all) => all.some((other, otherIndex) => otherIndex !== index && other.sha256 === item.sha256)).map((item) => item.sha256))
     let result = filter === 'SELECTED' ? media.filter((item) => item.isSelected)
       : filter === 'DUPLICATE' ? media.filter((item) => duplicateHashes.has(item.sha256)) : [...media]
@@ -208,8 +237,12 @@ export const api = {
       totalPages: Math.max(1, Math.ceil(result.length / pageSize)),
     }
   },
-  async updateMedia(value: import('../types').MediaItem): Promise<void> {
-    if (mockEnabled) { media = media.map((item) => item.id === value.id ? cloneValue(value) : item); return }
-    await request(`/api/contents/demo/media/${value.id}`, { method: 'PATCH', body: JSON.stringify(value) })
+  async updateMedia(contentId: string, value: import('../types').MediaItem): Promise<void> {
+    if (mockEnabled) {
+      if (contentId !== mockContentId) throw new Error('콘텐츠와 이미지가 일치하지 않습니다.')
+      media = media.map((item) => item.id === value.id ? cloneValue(value) : item)
+      return
+    }
+    await request(`${contentPath(contentId)}/media/${encodeURIComponent(value.id)}`, { method: 'PATCH', body: JSON.stringify(value) })
   },
 }
