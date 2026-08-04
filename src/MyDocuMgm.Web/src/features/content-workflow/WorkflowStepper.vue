@@ -1,16 +1,28 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { WorkflowStep } from '../../shared/types'
 import { workflowSteps } from '../../shared/presentation/labels'
 
 const props = defineProps<{ current: WorkflowStep; showTools?: boolean }>()
 const emit = defineEmits<{ edit: []; delete: []; close: [] }>()
 const currentIndex = computed(() => workflowSteps.findIndex((step) => step.key === props.current))
+const stepList = ref<HTMLOListElement>()
+
+async function revealCurrentStep() {
+  await nextTick()
+  if (typeof window === 'undefined' || !window.matchMedia?.('(max-width: 720px)').matches) return
+
+  stepList.value
+    ?.querySelector<HTMLElement>('[aria-current="step"]')
+    ?.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' })
+}
+
+watch(() => props.current, revealCurrentStep, { immediate: true })
 </script>
 
 <template>
   <div class="workflow-head">
-    <ol class="workflow-steps" aria-label="전체 작업 단계">
+    <ol ref="stepList" class="workflow-steps" aria-label="전체 작업 단계">
       <li
         v-for="(step, index) in workflowSteps"
         :key="step.key"

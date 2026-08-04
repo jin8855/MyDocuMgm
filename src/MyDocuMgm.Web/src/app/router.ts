@@ -7,6 +7,16 @@ import MobileReadingPage from '../pages/MobileReadingPage.vue'
 import WorkflowPage from '../pages/WorkflowPage.vue'
 import WorkListPage from '../pages/WorkListPage.vue'
 
+const newWorkIdPrefix = 'new-'
+
+export function createNewWorkPath(): string {
+  return `/workflow/${newWorkIdPrefix}${globalThis.crypto.randomUUID()}/url`
+}
+
+export function isNewWorkId(id: string): boolean {
+  return id.startsWith(newWorkIdPrefix)
+}
+
 export const routes: RouteRecordRaw[] = [
   { path: '/', component: DashboardPage },
   { path: '/contents', component: WorkListPage },

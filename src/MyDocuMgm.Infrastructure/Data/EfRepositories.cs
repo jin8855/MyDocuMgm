@@ -210,7 +210,9 @@ public sealed class EfMediaAssetRepository(MyDocuMgmDbContext dbContext) : IMedi
         CancellationToken cancellationToken)
     {
         var query = includeDeleted ? dbContext.MediaAssets.IgnoreQueryFilters() : dbContext.MediaAssets;
-        return await query.Where(media => media.ContentId == contentId)
+        return await query.Where(media =>
+                media.ContentId == contentId &&
+                media.StorageStatus == MediaStorageStatus.READY)
             .OrderBy(media => media.SortOrder)
             .ThenBy(media => media.CreatedAtUtc)
             .ToListAsync(cancellationToken);
@@ -218,6 +220,33 @@ public sealed class EfMediaAssetRepository(MyDocuMgmDbContext dbContext) : IMedi
 
     public Task AddAsync(MediaAsset media, CancellationToken cancellationToken) =>
         dbContext.MediaAssets.AddAsync(media, cancellationToken).AsTask();
+
+    public Task<MediaAsset?> FindReadyDuplicateAsync(
+        Guid contentId,
+        string sha256,
+        long sizeBytes,
+        CancellationToken cancellationToken) =>
+        dbContext.MediaAssets
+            .OrderBy(media => media.SortOrder)
+            .ThenBy(media => media.CreatedAtUtc)
+            .FirstOrDefaultAsync(
+                media => media.ContentId == contentId &&
+                         media.StorageStatus == MediaStorageStatus.READY &&
+                         media.Sha256 == sha256 &&
+                         media.SizeBytes == sizeBytes,
+                cancellationToken);
+
+    public async Task<IReadOnlyList<MediaAsset>> ListAllAsync(
+        bool includeDeleted,
+        CancellationToken cancellationToken)
+    {
+        var query = includeDeleted ? dbContext.MediaAssets.IgnoreQueryFilters() : dbContext.MediaAssets;
+        return await query
+            .Where(media => media.StorageStatus == MediaStorageStatus.READY)
+            .OrderBy(media => media.ContentId)
+            .ThenBy(media => media.SortOrder)
+            .ToListAsync(cancellationToken);
+    }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
@@ -233,19 +262,29 @@ public sealed class EfMediaAssetRepository(MyDocuMgmDbContext dbContext) : IMedi
 
     public async Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken)
     {
-        var baseQuery = dbContext.MediaAssets.AsNoTracking().Where(media => media.ContentId == query.ContentId);
+        var readyQuery = dbContext.MediaAssets.AsNoTracking().Where(media =>
+            media.ContentId == query.ContentId &&
+            media.StorageStatus == MediaStorageStatus.READY);
+        var deletedQuery = dbContext.MediaAssets.IgnoreQueryFilters().AsNoTracking().Where(media =>
+            media.ContentId == query.ContentId &&
+            media.IsDeleted &&
+            media.StorageStatus == MediaStorageStatus.READY);
         var duplicateHashes = dbContext.MediaAssets.AsNoTracking()
-            .Where(media => media.ContentId == query.ContentId)
+            .Where(media =>
+                media.ContentId == query.ContentId &&
+                media.StorageStatus == MediaStorageStatus.READY)
             .GroupBy(media => media.Sha256)
             .Where(group => group.Count() > 1)
             .Select(group => group.Key);
-        var selectedCount = await baseQuery.CountAsync(media => media.IsSelected, cancellationToken);
-        var duplicateCount = await baseQuery.CountAsync(media => duplicateHashes.Contains(media.Sha256), cancellationToken);
+        var selectedCount = await readyQuery.CountAsync(media => media.IsSelected, cancellationToken);
+        var duplicateCount = await readyQuery.CountAsync(media => duplicateHashes.Contains(media.Sha256), cancellationToken);
+        var deletedCount = await deletedQuery.CountAsync(cancellationToken);
         var filtered = query.Filter switch
         {
-            MediaFilter.SELECTED => baseQuery.Where(media => media.IsSelected),
-            MediaFilter.DUPLICATE => baseQuery.Where(media => duplicateHashes.Contains(media.Sha256)),
-            _ => baseQuery
+            MediaFilter.SELECTED => readyQuery.Where(media => media.IsSelected),
+            MediaFilter.DUPLICATE => readyQuery.Where(media => duplicateHashes.Contains(media.Sha256)),
+            MediaFilter.DELETED => deletedQuery,
+            _ => readyQuery
         };
         var filteredCount = await filtered.CountAsync(cancellationToken);
         var ordered = query.Sort == MediaSort.TIME_DESC
@@ -272,9 +311,18 @@ public sealed class EfMediaAssetRepository(MyDocuMgmDbContext dbContext) : IMedi
                 media.Description,
                 media.StorageStatus,
                 media.Sha256,
+                media.IsDeleted,
+                media.DeletedAtUtc,
                 Convert.ToBase64String(media.RowVersion)))
             .ToListAsync(cancellationToken);
-        return new MediaPage(items, filteredCount, selectedCount, duplicateCount, query.Page, query.PageSize);
+        return new MediaPage(
+            items,
+            filteredCount,
+            selectedCount,
+            duplicateCount,
+            deletedCount,
+            query.Page,
+            query.PageSize);
     }
 }
 

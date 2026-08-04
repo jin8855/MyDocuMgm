@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+import { createNewWorkPath } from '../app/router'
 import { api } from '../shared/api/client'
 import type { ContentItem } from '../shared/types'
 import { workflowStepLabel, workflowStepRoute } from '../shared/presentation/labels'
 
 const items = ref<ContentItem[]>([])
+const router = useRouter()
 onMounted(async () => { items.value = (await api.contents({ majorCategory: '', attributeKey: '', attributeValue: '', status: '', workflowStep: '', searchScope: 'ALL', keyword: '', page: 1, pageSize: 24 })).items })
+function startNewWork() { void router.push(createNewWorkPath()) }
 </script>
 
 <template>
   <div class="page">
-    <header class="page-title"><div><p class="eyebrow">WORK BOARD</p><h1>작업보드</h1><p>수집부터 완료까지 현재 작업 흐름을 확인합니다.</p></div><RouterLink class="button primary" to="/workflow/demo/url">새 URL 작업</RouterLink></header>
+    <header class="page-title"><div><p class="eyebrow">WORK BOARD</p><h1>작업보드</h1><p>수집부터 완료까지 현재 작업 흐름을 확인합니다.</p></div><button class="button primary" type="button" @click="startNewWork">새 URL 작업</button></header>
     <section class="metric-row">
       <article><span>진행 중</span><strong>7</strong><small>단계 작업</small></article>
       <article><span>확인 필요</span><strong>{{ items.filter((item) => item.status === 'REVIEW_REQUIRED').length }}</strong><small>자료</small></article>

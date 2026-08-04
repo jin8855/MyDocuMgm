@@ -70,13 +70,25 @@ public sealed class Phase1RepairRulesTests
         public Task<IReadOnlyList<MediaAsset>> ListAsync(Guid contentId, bool includeDeleted, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<MediaAsset>>([]);
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken) =>
-            Task.FromResult(new MediaPage([], 0, 0, 0, query.Page, query.PageSize));
+            Task.FromResult(new MediaPage([], 0, 0, 0, 0, query.Page, query.PageSize));
+        public Task<MediaAsset?> FindReadyDuplicateAsync(Guid contentId, string sha256, long sizeBytes, CancellationToken cancellationToken) =>
+            Task.FromResult<MediaAsset?>(null);
+        public Task<IReadOnlyList<MediaAsset>> ListAllAsync(bool includeDeleted, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<MediaAsset>>([]);
     }
 
     private sealed class EmptyStorage : IMediaStorage
     {
         public Task DeleteIfExistsAsync(string relativePath, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<StoredMedia> StoreAsync(Stream source, string originalFileName, string declaredMimeType, CancellationToken cancellationToken) =>
+        public Task<PreparedMedia> PrepareAsync(Stream source, Guid contentId, Guid mediaId, string originalFileName, string declaredMimeType, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+        public Task PromoteAsync(PreparedMedia prepared, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task DiscardPreparedAsync(PreparedMedia prepared, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<MediaBinary> OpenOriginalAsync(string relativePath, string mimeType, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<MediaBinary> GetOrCreateThumbnailAsync(Guid mediaId, string relativePath, string expectedMimeType, long expectedSizeBytes, string expectedSha256, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<MediaIntegrityResult> VerifyAsync(string relativePath, string expectedMimeType, long expectedSizeBytes, string expectedSha256, CancellationToken cancellationToken) =>
+            Task.FromResult(new MediaIntegrityResult(true, "MEDIA_INTEGRITY_OK"));
+        public Task<MediaReconciliationReport> ReconcileAsync(IReadOnlyList<MediaStorageReference> references, CancellationToken cancellationToken) =>
+            Task.FromResult(new MediaReconciliationReport(0, 0, 0, 0, 0, 0, []));
     }
 }

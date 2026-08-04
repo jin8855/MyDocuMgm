@@ -3,7 +3,7 @@ export type ContentStatus = 'INBOX' | 'REVIEW_REQUIRED' | 'READY' | 'ARCHIVED'
 export type WorkflowStepValue = WorkflowStep | number
 export type ContentStatusValue = ContentStatus | number
 export type SearchScope = 'ALL' | 'TAG'
-export type MediaFilter = 'ALL' | 'SELECTED' | 'DUPLICATE'
+export type MediaFilter = 'ALL' | 'SELECTED' | 'DUPLICATE' | 'DELETED'
 export type MediaSort = 'TIME_ASC' | 'TIME_DESC'
 
 export interface SearchAttribute {
@@ -93,6 +93,8 @@ export interface MediaItem {
   description: string
   storageStatus: 'PENDING' | 'READY' | 'FAILED'
   sha256: string
+  isDeleted: boolean
+  deletedAtUtc: string | null
   rowVersion: string
 }
 
@@ -101,7 +103,13 @@ export interface MediaPage {
   totalCount: number
   selectedCount: number
   duplicateCount: number
+  deletedCount: number
   page: number
   pageSize: number
   totalPages: number
+}
+
+export interface MediaUploadResult {
+  item: MediaItem
+  reused: boolean
 }

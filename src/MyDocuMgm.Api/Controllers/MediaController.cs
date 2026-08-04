@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using MyDocuMgm.Application;
-using MyDocuMgm.Domain;
 
 namespace MyDocuMgm.Api.Controllers;
 
@@ -20,23 +19,48 @@ public sealed class MediaController(MediaService service) : ControllerBase
 
     [HttpPost]
     [RequestSizeLimit(20 * 1024 * 1024 + 65_536)]
-    public async Task<ActionResult<MediaAsset>> Upload(
+    public async Task<ActionResult<MediaUploadResult>> Upload(
         Guid contentId,
         IFormFile file,
         CancellationToken cancellationToken)
     {
         await using var stream = file.OpenReadStream();
-        var media = await service.UploadAsync(contentId, stream, file.FileName, file.ContentType, cancellationToken);
-        return CreatedAtAction(nameof(List), new { contentId }, media);
+        var result = await service.UploadAsync(
+            contentId,
+            stream,
+            file.FileName,
+            file.ContentType,
+            cancellationToken);
+        return CreatedAtAction(nameof(List), new { contentId }, result);
     }
 
     [HttpPatch("{mediaId:guid}")]
-    public Task<MediaAsset> Update(
+    public Task<MediaItemDto> Update(
         Guid contentId,
         Guid mediaId,
         [FromBody] UpdateMediaMetadataRequest request,
         CancellationToken cancellationToken) =>
         service.UpdateAsync(contentId, mediaId, request, cancellationToken);
+
+    [HttpGet("{mediaId:guid}/file")]
+    public async Task<IActionResult> Original(
+        Guid contentId,
+        Guid mediaId,
+        CancellationToken cancellationToken)
+    {
+        var file = await service.OpenOriginalAsync(contentId, mediaId, cancellationToken);
+        return File(file.Content, file.MimeType, enableRangeProcessing: true);
+    }
+
+    [HttpGet("{mediaId:guid}/thumbnail")]
+    public async Task<IActionResult> Thumbnail(
+        Guid contentId,
+        Guid mediaId,
+        CancellationToken cancellationToken)
+    {
+        var file = await service.OpenThumbnailAsync(contentId, mediaId, cancellationToken);
+        return File(file.Content, file.MimeType, enableRangeProcessing: true);
+    }
 
     [HttpPut("order")]
     public async Task<IActionResult> Reorder(
@@ -49,17 +73,41 @@ public sealed class MediaController(MediaService service) : ControllerBase
     }
 
     [HttpDelete("{mediaId:guid}")]
-    public async Task<IActionResult> Delete(Guid contentId, Guid mediaId, CancellationToken cancellationToken)
+    public async Task<IActionResult> Delete(
+        Guid contentId,
+        Guid mediaId,
+        [FromQuery] string rowVersion,
+        CancellationToken cancellationToken)
     {
-        await service.DeleteAsync(contentId, mediaId, cancellationToken);
+        await service.DeleteAsync(contentId, mediaId, rowVersion, cancellationToken);
         return NoContent();
     }
 
     [HttpPost("{mediaId:guid}/restore")]
-    public async Task<IActionResult> Restore(Guid contentId, Guid mediaId, CancellationToken cancellationToken)
+    public Task<MediaItemDto> Restore(
+        Guid contentId,
+        Guid mediaId,
+        [FromBody] RestoreMediaRequest request,
+        CancellationToken cancellationToken) =>
+        service.RestoreAsync(contentId, mediaId, request.RowVersion, cancellationToken);
+
+    [HttpPost("{mediaId:guid}/move")]
+    public async Task<IActionResult> Move(
+        Guid contentId,
+        Guid mediaId,
+        [FromBody] MoveMediaRequest request,
+        CancellationToken cancellationToken)
     {
-        await service.RestoreAsync(contentId, mediaId, cancellationToken);
+        await service.MoveAsync(
+            contentId,
+            mediaId,
+            request.Direction,
+            request.RowVersion,
+            cancellationToken);
         return NoContent();
     }
 }
+
 public sealed record ReorderMediaRequest(IReadOnlyList<Guid> MediaIds);
+public sealed record RestoreMediaRequest(string RowVersion);
+public sealed record MoveMediaRequest(int Direction, string RowVersion);

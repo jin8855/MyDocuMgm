@@ -87,6 +87,12 @@ public interface IMediaAssetRepository
     Task<MediaAsset?> FindAsync(Guid contentId, Guid mediaId, bool includeDeleted, CancellationToken cancellationToken);
     Task<IReadOnlyList<MediaAsset>> ListAsync(Guid contentId, bool includeDeleted, CancellationToken cancellationToken);
     Task<MediaPage> SearchAsync(MediaQuery query, CancellationToken cancellationToken);
+    Task<MediaAsset?> FindReadyDuplicateAsync(
+        Guid contentId,
+        string sha256,
+        long sizeBytes,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<MediaAsset>> ListAllAsync(bool includeDeleted, CancellationToken cancellationToken);
     Task AddAsync(MediaAsset media, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
@@ -95,7 +101,8 @@ public enum MediaFilter
 {
     ALL,
     SELECTED,
-    DUPLICATE
+    DUPLICATE,
+    DELETED
 }
 
 public enum MediaSort
@@ -126,6 +133,8 @@ public sealed record MediaItemDto(
     string? Description,
     MediaStorageStatus StorageStatus,
     string Sha256,
+    bool IsDeleted,
+    DateTime? DeletedAtUtc,
     string RowVersion);
 
 public sealed record MediaPage(
@@ -133,6 +142,7 @@ public sealed record MediaPage(
     int TotalCount,
     int SelectedCount,
     int DuplicateCount,
+    int DeletedCount,
     int Page,
     int PageSize)
 {
@@ -146,7 +156,10 @@ public sealed record UpdateMediaMetadataRequest(
     long? SourceTimestampMs,
     string RowVersion);
 
-public sealed record StoredMedia(
+public sealed record MediaUploadResult(MediaItemDto Item, bool Reused);
+
+public sealed record PreparedMedia(
+    string TemporaryRelativePath,
     string StoredFileName,
     string RelativePath,
     string MimeType,
@@ -155,10 +168,82 @@ public sealed record StoredMedia(
     int Width,
     int Height);
 
+public sealed record MediaBinary(Stream Content, string MimeType);
+
+public sealed record MediaIntegrityResult(bool IsValid, string Code);
+
+public sealed record MediaStorageReference(
+    Guid MediaId,
+    string RelativePath,
+    string MimeType,
+    long SizeBytes,
+    string Sha256);
+
+public sealed record MediaReconciliationIssue(string Code, Guid? MediaId);
+
+public sealed record MediaReconciliationReport(
+    int ReferencedCount,
+    int CheckedCount,
+    int MissingCount,
+    int IntegrityMismatchCount,
+    int OrphanCount,
+    int StaleTemporaryCount,
+    IReadOnlyList<MediaReconciliationIssue> Issues);
+
 public interface IMediaStorage
 {
-    Task<StoredMedia> StoreAsync(Stream source, string originalFileName, string declaredMimeType, CancellationToken cancellationToken);
+    Task<PreparedMedia> PrepareAsync(
+        Stream source,
+        Guid contentId,
+        Guid mediaId,
+        string originalFileName,
+        string declaredMimeType,
+        CancellationToken cancellationToken);
+    Task PromoteAsync(PreparedMedia prepared, CancellationToken cancellationToken);
+    Task DiscardPreparedAsync(PreparedMedia prepared, CancellationToken cancellationToken);
     Task DeleteIfExistsAsync(string relativePath, CancellationToken cancellationToken);
+    Task<MediaBinary> OpenOriginalAsync(
+        string relativePath,
+        string mimeType,
+        CancellationToken cancellationToken);
+    Task<MediaBinary> GetOrCreateThumbnailAsync(
+        Guid mediaId,
+        string relativePath,
+        string expectedMimeType,
+        long expectedSizeBytes,
+        string expectedSha256,
+        CancellationToken cancellationToken);
+    Task<MediaIntegrityResult> VerifyAsync(
+        string relativePath,
+        string expectedMimeType,
+        long expectedSizeBytes,
+        string expectedSha256,
+        CancellationToken cancellationToken);
+    Task<MediaReconciliationReport> ReconcileAsync(
+        IReadOnlyList<MediaStorageReference> references,
+        CancellationToken cancellationToken);
+}
+
+public interface IMediaDiagnostics
+{
+    void Record(string code, Guid? contentId, Guid? mediaId = null);
+}
+
+public sealed record MediaStorageReadiness(bool IsReady, string Code);
+
+public interface IMediaStorageReadiness
+{
+    Task<MediaStorageReadiness> CheckReadinessAsync(CancellationToken cancellationToken);
+}
+
+public sealed class MediaOperationException : Exception
+{
+    public MediaOperationException(string code, string message) : base(message)
+    {
+        Code = code;
+    }
+
+    public string Code { get; }
 }
 
 public sealed class ConcurrencyConflictException(string message) : InvalidOperationException(message);

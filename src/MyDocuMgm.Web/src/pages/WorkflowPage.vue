@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { isNewWorkId } from '../app/router'
 import WorkflowStepper from '../features/content-workflow/WorkflowStepper.vue'
 import WorkflowFooter from '../features/content-workflow/WorkflowFooter.vue'
 import UrlStage from '../features/content-workflow/UrlStage.vue'
@@ -11,6 +12,7 @@ import CategoryEditingStage from '../features/category-editing/CategoryEditingSt
 import BlogDraftStage from '../features/blog-draft/BlogDraftStage.vue'
 import IngredientDialog from '../features/ingredient-editing/IngredientDialog.vue'
 import MediaToolbar from '../features/media-management/MediaToolbar.vue'
+import MediaUploadPanel from '../features/media-management/MediaUploadPanel.vue'
 import PaginationBar from '../features/media-management/PaginationBar.vue'
 import SelectedMediaEditor from '../features/media-management/SelectedMediaEditor.vue'
 import ThumbnailGrid from '../features/media-management/ThumbnailGrid.vue'
@@ -32,25 +34,47 @@ const showUnsaved = ref(false)
 const showDelete = ref(false)
 const pendingAction = ref<null | (() => void)>(null)
 const mediaState = useMediaState(() => props.id)
+let loadGeneration = 0
 
+const isNewWork = computed(() => isNewWorkId(props.id))
 const current = computed<WorkflowStep>(() =>
   workflowSteps.find((item) => item.route === props.step)?.key ?? 'URL')
 const currentIndex = computed(() => workflowSteps.findIndex((item) => item.key === current.value))
 const previous = computed(() => currentIndex.value > 0 ? workflowSteps[currentIndex.value - 1] : undefined)
 const next = computed(() => currentIndex.value < workflowSteps.length - 1 ? workflowSteps[currentIndex.value + 1] : undefined)
 
-async function load() {
+function resetWorkflowState() {
   loadError.value = ''
   content.value = undefined
   ingredients.value = []
+  ingredientDialogOpen.value = false
+  editingIngredient.value = undefined
+  dirty.value = false
+  showUnsaved.value = false
+  showDelete.value = false
+  pendingAction.value = null
+  mediaState.reset()
+}
+
+async function load() {
+  const generation = ++loadGeneration
+  resetWorkflowState()
+  if (isNewWork.value) return
+
   try {
-    content.value = await api.content(props.id)
-    ingredients.value = await api.ingredients(props.id)
+    const [nextContent, nextIngredients] = await Promise.all([
+      api.content(props.id),
+      api.ingredients(props.id),
+    ])
+    if (generation !== loadGeneration) return
+    content.value = nextContent
+    ingredients.value = nextIngredients
     if (current.value === 'MEDIA') await mediaState.load()
   } catch (error) {
+    if (generation !== loadGeneration) return
     loadError.value = error instanceof Error ? error.message : '콘텐츠를 불러오지 못했습니다.'
   } finally {
-    dirty.value = false
+    if (generation === loadGeneration) dirty.value = false
   }
 }
 
@@ -112,14 +136,14 @@ async function unsetPrimary(value: CookingIngredient) {
 
 function markDirty() { dirty.value = true }
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave((to) => {
   if (!dirty.value) return true
+  pendingAction.value = () => { void router.push(to.fullPath) }
   showUnsaved.value = true
   return false
 })
 
-watch(() => props.step, load)
-onMounted(load)
+watch(() => [props.id, props.step], load, { immediate: true })
 </script>
 
 <template>
@@ -135,7 +159,7 @@ onMounted(load)
     <header class="page-title compact-title">
       <div>
         <span class="eyebrow">7단계 작업 흐름</span>
-        <h1>{{ content?.title ?? '콘텐츠 불러오는 중' }}</h1>
+        <h1>{{ content?.title ?? (isNewWork ? '새 작업' : '콘텐츠 불러오는 중') }}</h1>
         <p>{{ workflowSteps[currentIndex]?.label }} 단계에서 필요한 정보만 차분하게 확인합니다.</p>
       </div>
       <span v-if="dirty" class="dirty-indicator">저장하지 않은 변경</span>
@@ -147,7 +171,11 @@ onMounted(load)
       <button class="button" @click="router.push('/contents')">작업목록으로 돌아가기</button>
     </section>
 
-    <UrlStage v-else-if="current === 'URL'" @dirty="markDirty" />
+    <UrlStage v-else-if="current === 'URL'" :key="props.id" :empty="isNewWork" @dirty="markDirty" />
+    <section v-else-if="isNewWork" class="surface empty-state" data-testid="new-work-empty-stage">
+      <h2>{{ workflowSteps[currentIndex]?.label }} 데이터가 없습니다</h2>
+      <p>새 작업은 이전 작업의 데이터와 연결되지 않습니다. URL 단계부터 새 내용을 입력해 주세요.</p>
+    </section>
     <AnalysisReviewStage v-else-if="current === 'ANALYSIS_REVIEW'" @dirty="markDirty" />
 
     <template v-else-if="current === 'CATEGORY_EDIT'">
@@ -168,6 +196,17 @@ onMounted(load)
     </template>
 
     <template v-else-if="current === 'MEDIA'">
+      <MediaUploadPanel
+        :preview-url="mediaState.uploadPreviewUrl.value"
+        :file-name="mediaState.uploadFile.value?.name"
+        :progress="mediaState.uploadProgress.value"
+        :uploading="mediaState.uploading.value"
+        :result="mediaState.uploadResult.value"
+        :error="mediaState.operationError.value"
+        @upload="mediaState.upload"
+        @cancel="mediaState.cancelUpload"
+        @clear="mediaState.clearPreview"
+      />
       <MediaToolbar
         :filter="mediaState.filter.value"
         :sort="mediaState.sort.value"
@@ -175,6 +214,7 @@ onMounted(load)
         :total="mediaState.result.value.totalCount"
         :selected="mediaState.result.value.selectedCount"
         :duplicates="mediaState.result.value.duplicateCount"
+        :deleted="mediaState.result.value.deletedCount"
         @filter="mediaState.setFilter"
         @sort="mediaState.setSort"
         @page-size="mediaState.setPageSize"
@@ -193,7 +233,13 @@ onMounted(load)
             @page="mediaState.setPage"
           />
         </section>
-        <SelectedMediaEditor :item="mediaState.activeItem.value" @save="(item) => { markDirty(); mediaState.save(item) }" />
+        <SelectedMediaEditor
+          :item="mediaState.activeItem.value"
+          @save="(item) => { markDirty(); mediaState.save(item) }"
+          @delete="(item) => { markDirty(); mediaState.remove(item) }"
+          @restore="(item) => { markDirty(); mediaState.restore(item) }"
+          @move="(item, direction) => { markDirty(); mediaState.move(item, direction) }"
+        />
       </div>
     </template>
 

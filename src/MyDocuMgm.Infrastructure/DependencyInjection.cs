@@ -25,12 +25,35 @@ public static class DependencyInjection
             {
                 options.MaxImageBytes = maxImageBytes;
             }
+
+            if (int.TryParse(storageSection[nameof(StorageOptions.MaxPixelWidth)], out var maxPixelWidth))
+            {
+                options.MaxPixelWidth = maxPixelWidth;
+            }
+
+            if (int.TryParse(storageSection[nameof(StorageOptions.MaxPixelHeight)], out var maxPixelHeight))
+            {
+                options.MaxPixelHeight = maxPixelHeight;
+            }
+
+            if (long.TryParse(storageSection[nameof(StorageOptions.MaxTotalPixels)], out var maxTotalPixels))
+            {
+                options.MaxTotalPixels = maxTotalPixels;
+            }
+
+            if (int.TryParse(storageSection[nameof(StorageOptions.ThumbnailMaxPixels)], out var thumbnailMaxPixels))
+            {
+                options.ThumbnailMaxPixels = thumbnailMaxPixels;
+            }
         });
         services.AddScoped<IContentRepository, EfContentRepository>();
         services.AddScoped<IMediaAssetRepository, EfMediaAssetRepository>();
         services.AddScoped<ICookingIngredientRepository, EfCookingIngredientRepository>();
         services.AddScoped<ICategoryManagementRepository, EfCategoryManagementRepository>();
-        services.AddScoped<IMediaStorage, LocalMediaStorage>();
+        services.AddScoped<LocalMediaStorage>();
+        services.AddScoped<IMediaStorage>(provider => provider.GetRequiredService<LocalMediaStorage>());
+        services.AddScoped<IMediaStorageReadiness>(provider => provider.GetRequiredService<LocalMediaStorage>());
+        services.AddScoped<IMediaDiagnostics, MediaDiagnostics>();
         services.AddScoped<ContentService>();
         services.AddScoped<MediaService>();
         services.AddScoped<CookingIngredientService>();

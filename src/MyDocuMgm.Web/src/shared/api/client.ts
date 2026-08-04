@@ -4,8 +4,10 @@ import type {
   ContentPage,
   CookingIngredient,
   MediaFilter,
+  MediaItem,
   MediaPage,
   MediaSort,
+  MediaUploadResult,
   SearchAttribute,
   SearchQuery,
 } from '../types'
@@ -17,12 +19,31 @@ const rowVersion = 'AAAAAAAAB9E='
 const mockContentId = 'demo'
 const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+export class ApiError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 function contentPath(contentId: string): string {
   const value = contentId.trim()
   if (!value || (!mockEnabled && !guidPattern.test(value))) {
     throw new Error('올바른 콘텐츠 ID가 필요합니다.')
   }
   return `/api/contents/${encodeURIComponent(value)}`
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => resolve(String(reader.result ?? '')))
+    reader.addEventListener('error', () => reject(new ApiError(
+      'MEDIA_DECODE_FAILED',
+      '선택한 이미지의 미리보기를 만들 수 없습니다.',
+    )))
+    reader.readAsDataURL(file)
+  })
 }
 
 const categorySource = [
@@ -111,6 +132,8 @@ let media: import('../types').MediaItem[] = Array.from({ length: 137 }, (_, inde
   description: index === 0 ? '새우 손질 단계' : '',
   storageStatus: 'READY',
   sha256: index < 4 ? 'DUPLICATE-A' : `HASH-${index}`,
+  isDeleted: false,
+  deletedAtUtc: null,
   rowVersion,
 }))
 
@@ -120,8 +143,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers: init?.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init?.headers },
   })
   if (!response.ok) {
-    const problem = await response.json().catch(() => null) as { title?: string; detail?: string } | null
-    throw new Error(problem?.detail ?? problem?.title ?? `요청 실패 (${response.status})`)
+    const problem = await response.json().catch(() => null) as {
+      title?: string
+      detail?: string
+      code?: string
+    } | null
+    throw new ApiError(
+      problem?.code ?? 'UNEXPECTED_ERROR',
+      problem?.detail ?? problem?.title ?? `요청 실패 (${response.status})`,
+    )
   }
   return response.status === 204 ? undefined as T : await response.json() as T
 }
@@ -218,11 +248,13 @@ export const api = {
   async media(contentId: string, filter: MediaFilter, sort: MediaSort, page: number, pageSize: number): Promise<MediaPage> {
     if (!mockEnabled) return request(`${contentPath(contentId)}/media?filter=${filter}&sort=${sort}&page=${page}&pageSize=${pageSize}`)
     if (contentId !== mockContentId) {
-      return { items: [], totalCount: 0, selectedCount: 0, duplicateCount: 0, page, pageSize, totalPages: 1 }
+      return { items: [], totalCount: 0, selectedCount: 0, duplicateCount: 0, deletedCount: 0, page, pageSize, totalPages: 1 }
     }
-    const duplicateHashes = new Set(media.filter((item, index, all) => all.some((other, otherIndex) => otherIndex !== index && other.sha256 === item.sha256)).map((item) => item.sha256))
-    let result = filter === 'SELECTED' ? media.filter((item) => item.isSelected)
-      : filter === 'DUPLICATE' ? media.filter((item) => duplicateHashes.has(item.sha256)) : [...media]
+    const ready = media.filter((item) => !item.isDeleted)
+    const duplicateHashes = new Set(ready.filter((item, index, all) => all.some((other, otherIndex) => otherIndex !== index && other.sha256 === item.sha256)).map((item) => item.sha256))
+    let result = filter === 'SELECTED' ? ready.filter((item) => item.isSelected)
+      : filter === 'DUPLICATE' ? ready.filter((item) => duplicateHashes.has(item.sha256))
+        : filter === 'DELETED' ? media.filter((item) => item.isDeleted) : [...ready]
     result.sort((a, b) => sort === 'TIME_DESC'
       ? (b.sourceTimestampMs ?? b.sortOrder) - (a.sourceTimestampMs ?? a.sortOrder)
       : (a.sourceTimestampMs ?? a.sortOrder) - (b.sourceTimestampMs ?? b.sortOrder))
@@ -230,19 +262,132 @@ export const api = {
     return {
       items: cloneValue(result.slice(start, start + pageSize)),
       totalCount: result.length,
-      selectedCount: media.filter((item) => item.isSelected).length,
-      duplicateCount: media.filter((item) => duplicateHashes.has(item.sha256)).length,
+      selectedCount: ready.filter((item) => item.isSelected).length,
+      duplicateCount: ready.filter((item) => duplicateHashes.has(item.sha256)).length,
+      deletedCount: media.filter((item) => item.isDeleted).length,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(result.length / pageSize)),
     }
   },
-  async updateMedia(contentId: string, value: import('../types').MediaItem): Promise<void> {
+  async updateMedia(contentId: string, value: MediaItem): Promise<void> {
     if (mockEnabled) {
       if (contentId !== mockContentId) throw new Error('콘텐츠와 이미지가 일치하지 않습니다.')
       media = media.map((item) => item.id === value.id ? cloneValue(value) : item)
       return
     }
     await request(`${contentPath(contentId)}/media/${encodeURIComponent(value.id)}`, { method: 'PATCH', body: JSON.stringify(value) })
+  },
+  async uploadMedia(
+    contentId: string,
+    file: File,
+    onProgress: (value: number) => void,
+    signal: AbortSignal,
+  ): Promise<MediaUploadResult> {
+    if (mockEnabled) {
+      if (contentId !== mockContentId) throw new ApiError('MEDIA_CONTENT_NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+      for (const value of [20, 55, 85, 100]) {
+        if (signal.aborted) throw new ApiError('MEDIA_OPERATION_CANCELLED', '이미지 작업이 취소되었습니다.')
+        await new Promise((resolve) => setTimeout(resolve, 15))
+        onProgress(value)
+      }
+      const existing = media.find((item) => !item.isDeleted && item.sizeBytes === file.size && item.originalFileName === file.name)
+      if (existing) return { item: cloneValue(existing), reused: true }
+      const item: MediaItem = {
+        id: `media-${Date.now()}`,
+        originalFileName: file.name,
+        thumbnailUrl: await readFileAsDataUrl(file),
+        mimeType: file.type,
+        sizeBytes: file.size,
+        width: 1,
+        height: 1,
+        sortOrder: media.length + 1,
+        sourceTimestampMs: null,
+        isSelected: false,
+        isPublicAllowed: false,
+        description: '',
+        storageStatus: 'READY',
+        sha256: `MOCK-${file.name}-${file.size}`,
+        isDeleted: false,
+        deletedAtUtc: null,
+        rowVersion,
+      }
+      media.push(item)
+      return { item: cloneValue(item), reused: false }
+    }
+
+    return new Promise<MediaUploadResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      const abort = () => xhr.abort()
+      signal.addEventListener('abort', abort, { once: true })
+      xhr.open('POST', `${contentPath(contentId)}/media`)
+      xhr.responseType = 'json'
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) onProgress(Math.round(event.loaded * 100 / event.total))
+      })
+      xhr.addEventListener('load', () => {
+        signal.removeEventListener('abort', abort)
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response as MediaUploadResult)
+          return
+        }
+        const problem = xhr.response as { code?: string; detail?: string; title?: string } | null
+        reject(new ApiError(
+          problem?.code ?? 'UNEXPECTED_ERROR',
+          problem?.detail ?? problem?.title ?? `요청 실패 (${xhr.status})`,
+        ))
+      })
+      xhr.addEventListener('error', () => {
+        signal.removeEventListener('abort', abort)
+        reject(new ApiError('MEDIA_UPLOAD_NETWORK_FAILED', '업로드 요청을 완료하지 못했습니다.'))
+      })
+      xhr.addEventListener('abort', () => {
+        signal.removeEventListener('abort', abort)
+        reject(new ApiError('MEDIA_OPERATION_CANCELLED', '이미지 작업이 취소되었습니다.'))
+      })
+      const body = new FormData()
+      body.append('file', file)
+      xhr.send(body)
+    })
+  },
+  async deleteMedia(contentId: string, value: MediaItem): Promise<void> {
+    if (mockEnabled) {
+      media = media.map((item) => item.id === value.id
+        ? { ...item, isDeleted: true, deletedAtUtc: new Date().toISOString() }
+        : item)
+      return
+    }
+    await request(
+      `${contentPath(contentId)}/media/${encodeURIComponent(value.id)}?rowVersion=${encodeURIComponent(value.rowVersion)}`,
+      { method: 'DELETE' },
+    )
+  },
+  async restoreMedia(contentId: string, value: MediaItem): Promise<MediaItem> {
+    if (mockEnabled) {
+      const restored = { ...value, isDeleted: false, deletedAtUtc: null }
+      media = media.map((item) => item.id === value.id ? restored : item)
+      return cloneValue(restored)
+    }
+    return request(`${contentPath(contentId)}/media/${encodeURIComponent(value.id)}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ rowVersion: value.rowVersion }),
+    })
+  },
+  async moveMedia(contentId: string, value: MediaItem, direction: -1 | 1): Promise<void> {
+    if (mockEnabled) {
+      const ordered = media.filter((item) => !item.isDeleted).sort((a, b) => a.sortOrder - b.sortOrder)
+      const index = ordered.findIndex((item) => item.id === value.id)
+      const target = ordered[index + direction]
+      if (index >= 0 && target) {
+        const sortOrder = value.sortOrder
+        value.sortOrder = target.sortOrder
+        target.sortOrder = sortOrder
+      }
+      return
+    }
+    await request(`${contentPath(contentId)}/media/${encodeURIComponent(value.id)}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ direction, rowVersion: value.rowVersion }),
+    })
   },
 }

@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { createNewWorkPath } from './router'
 
+const router = useRouter()
 const navigation = [
   { to: '/', label: '작업보드', icon: '▦' },
   { to: '/contents', label: '작업목록', icon: '☷' },
   { to: '/categories', label: '분류 관리', icon: '⌘' },
   { to: '/mobile', label: '모바일 읽기', icon: '▯' },
 ]
+
+function startNewWork() {
+  void router.push(createNewWorkPath())
+}
 </script>
 
 <template>
@@ -25,7 +31,7 @@ const navigation = [
     <div class="shell-main">
       <header class="workspace-header">
         <div><strong>나의 생활북</strong><span>생활 자료 작업 공간</span></div>
-        <RouterLink class="button primary" to="/workflow/demo/url">새 작업</RouterLink>
+        <button class="button primary" type="button" @click="startNewWork">새 작업</button>
       </header>
       <main><RouterView /></main>
     </div>

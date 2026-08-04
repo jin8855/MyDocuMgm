@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyDocuMgm · 나의 생활북 와이어프레임 v7</title>
+  <style>
+    :root {
+      --ink:#1e2723; --muted:#6d7771; --line:#d8dfda; --paper:#f5f7f5;
+      --card:#fff; --accent:#2f6f55; --soft:#e8f1ec; --warn:#9b6728;
+      --warn-bg:#fbf2e3; --danger:#9a4444; --shadow:0 8px 24px rgba(28,52,41,.08);
+    }
+    *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);
+      font-family:Pretendard,"Noto Sans KR",Arial,sans-serif;font-size:14px}
+    button,input,select,textarea{font:inherit} button{cursor:pointer}
+    .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+    aside{position:sticky;top:0;height:100vh;background:#173b2e;color:#fff;padding:22px 16px}
+    .brand{font-weight:800;font-size:20px;margin:0 8px 4px}.brand-sub{opacity:.7;margin:0 8px 24px;font-size:12px}
+    nav button{width:100%;border:0;background:transparent;color:#d9e8e0;padding:11px 12px;
+      display:flex;gap:10px;align-items:center;border-radius:10px;text-align:left;margin:2px 0}
+    nav button:hover,nav button.active{background:#2c5d49;color:#fff}
+    nav .phase{margin:20px 10px 7px;color:#90b6a4;font-size:11px;font-weight:700;letter-spacing:.08em}
+    main{padding:0 30px 50px;min-width:0}.top{height:70px;display:flex;align-items:center;
+      justify-content:space-between;border-bottom:1px solid var(--line);margin-bottom:26px}
+    .top h1{font-size:20px;margin:0}.top-actions{display:flex;gap:8px}
+    .btn{border:1px solid var(--line);background:white;border-radius:9px;padding:9px 13px;color:var(--ink)}
+    .btn.primary{background:var(--accent);border-color:var(--accent);color:white}
+    .btn.ghost{background:transparent}.screen{display:none}.screen.active{display:block}
+    .eyebrow{font-size:12px;color:var(--accent);font-weight:800;letter-spacing:.06em;margin-bottom:7px}
+    h2{font-size:27px;margin:0 0 18px}.lead{display:none}
+    .grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+    .card h3{margin:0 0 6px;font-size:16px}.card p{color:var(--muted);line-height:1.55}
+    .metric{font-size:28px;font-weight:800;margin-top:13px}.metric small{font-size:12px;color:var(--muted);font-weight:500}
+    .task{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #edf0ed}
+    .task:last-child{border:0}.num{width:28px;height:28px;border-radius:8px;background:var(--soft);
+      color:var(--accent);display:grid;place-items:center;font-weight:800;flex:none}
+    .tag,.status{display:inline-flex;align-items:center;border-radius:99px;padding:4px 8px;font-size:11px;
+      background:var(--soft);color:var(--accent);margin:2px}.status.warn{background:var(--warn-bg);color:var(--warn)}
+    .status.gray{background:#eef0ef;color:#67706b}.status.red{background:#f8eaea;color:var(--danger)}
+    .field{margin-bottom:15px}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}
+    .input{width:100%;border:1px solid var(--line);background:white;border-radius:9px;padding:10px 11px;color:#39433e}
+    textarea.input{min-height:95px;resize:vertical}.helper{color:var(--muted);font-size:11px;margin-top:5px}
+    .url-box{display:flex;gap:8px;padding:18px;background:#edf4f0;border:1px dashed #9bb7a9;border-radius:14px}
+    .url-box input{flex:1}.stepper{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0 26px}
+    .stepper div{position:relative;text-align:center;color:var(--muted);font-size:12px}
+    .stepper div:before{content:"";width:25px;height:25px;border-radius:50%;background:#dfe5e1;display:block;margin:0 auto 7px}
+    .stepper div:after{content:"";height:2px;background:#dfe5e1;position:absolute;top:12px;left:55%;right:-45%}
+    .stepper div:last-child:after{display:none}.stepper .on{color:var(--accent);font-weight:700}
+    .stepper .on:before{background:var(--accent);box-shadow:inset 0 0 0 7px #b8d0c4}
+    .workflow-head{display:flex;align-items:center;gap:16px;background:white;border:1px solid var(--line);
+      border-radius:14px;padding:13px 15px;margin-bottom:22px;box-shadow:var(--shadow)}
+    .workflow-head .stepper{grid-template-columns:repeat(7,minmax(76px,1fr));margin:0;flex:1}
+    .workflow-head .stepper .done{color:var(--accent);font-weight:700}
+    .workflow-head .stepper .done:before{background:#8eb49f;box-shadow:inset 0 0 0 7px #d7e7de}
+    .workflow-tools{display:flex;gap:6px;flex:none;border-left:1px solid var(--line);padding-left:14px}
+    .workflow-tools .btn{padding:8px 10px}
+    .step-actions{display:flex;justify-content:space-between;gap:8px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+    .step-actions .right{display:flex;gap:8px}
+    .evidence{border-left:3px solid #a8c2b5;padding:10px 12px;background:#f8faf9;margin:8px 0}
+    .uncertain{border-color:#d6a55c;background:#fff9ef}.category-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:9px}
+    .category{border:1px solid var(--line);background:white;border-radius:11px;padding:13px 8px;text-align:center}
+    .category.selected{border:2px solid var(--accent);background:var(--soft);color:var(--accent);font-weight:800}
+    .table{width:100%;border-collapse:collapse;background:white}.table th,.table td{padding:12px;border-bottom:1px solid #e8ece9;text-align:left}
+    .table th{font-size:11px;color:var(--muted);background:#f8faf8}.thumb{width:62px;height:48px;border-radius:8px;
+      background:linear-gradient(135deg,#dce7e1,#f5efe3);display:grid;place-items:center;color:#567267;font-size:11px}
+    .frames{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.frame{position:relative;border:1px solid var(--line);border-radius:11px;padding:7px;background:white}
+    .frame-img{aspect-ratio:16/10;border-radius:7px;background:linear-gradient(135deg,#d5ded8,#f0e8d8);
+      display:grid;place-items:center;color:#64746b}.frame.selected{outline:3px solid #7aa890}
+    .frame-check{position:absolute;top:12px;left:12px;z-index:2}.frame-meta{display:flex;justify-content:space-between;align-items:center;margin-top:7px;font-size:11px}
+    .media-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.media-toolbar .spacer{flex:1}
+    .media-summary{font-weight:800;margin-right:5px}.pager{display:flex;justify-content:center;align-items:center;gap:6px;margin-top:14px}
+    .selected-editor{display:grid;grid-template-columns:190px 1fr;gap:16px;margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+    .phone{width:340px;min-height:650px;background:white;border:9px solid #22322a;border-radius:34px;
+      margin:auto;overflow:hidden;box-shadow:var(--shadow)}.phone-top{padding:23px 18px 14px;background:#f1f6f3}
+    .phone-body{padding:14px}.mobile-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:13px}
+    .mobile-img{height:125px;background:linear-gradient(135deg,#cfdcd5,#efe3cd)}.mobile-copy{padding:12px}
+    .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.flow .node{background:white;border:1px solid var(--line);
+      border-radius:12px;padding:13px 16px;min-width:140px;text-align:center}.arrow{color:#7f9188;font-size:20px}
+    .note{background:#fffdf6;border:1px solid #eadbb7;border-radius:11px;padding:12px;color:#765a2f;line-height:1.55}
+    .search-builder{background:white;border:1px solid var(--line);border-radius:13px;padding:14px}
+    .search-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .search-row .input{flex:1;min-width:220px}
+    .query-chip{display:inline-flex;gap:5px;align-items:center;border:1px solid #a9c1b5;background:var(--soft);
+      color:var(--accent);border-radius:8px;padding:7px 9px;font-size:12px;font-weight:700}
+    .query-chip button{border:0;background:transparent;color:inherit;padding:0}
+    .help{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;
+      border:1px solid #9aaba2;border-radius:50%;color:#5f7168;background:#fff;font-size:11px;font-weight:800;
+      vertical-align:middle;cursor:help}
+    .help .tip{visibility:hidden;opacity:0;position:absolute;z-index:20;left:50%;top:25px;transform:translateX(-50%);
+      width:250px;padding:10px 11px;border-radius:9px;background:#24352d;color:#fff;font-size:12px;font-weight:400;
+      line-height:1.5;box-shadow:var(--shadow);transition:.12s;text-align:left;pointer-events:none}
+    .help:hover .tip,.help:focus .tip{visibility:visible;opacity:1}
+    .ingredient-row{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(110px,.8fr) 120px 92px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #e8ece9}
+    .ingredient-row.header{font-size:11px;color:var(--muted);font-weight:700;background:#f8faf8;padding:9px 8px}
+    .ingredient-row .input{padding:8px 9px}.ingredient-actions{display:flex;gap:5px}
+    .ingredient-actions .btn{width:32px;height:32px;padding:0;display:grid;place-items:center;font-size:16px}
+    .modal-backdrop{display:none;position:fixed;inset:0;z-index:100;background:rgba(20,32,26,.55);padding:24px;place-items:center}
+    .modal-backdrop.open{display:grid}.modal{width:min(520px,100%);background:#fff;border-radius:15px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:17px}.modal-head h3{margin:0}
+    .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+    .manage-layout{display:grid;grid-template-columns:290px 1fr;gap:16px}
+    .category-list button{width:100%;display:flex;justify-content:space-between;border:0;border-bottom:1px solid #edf0ed;
+      padding:12px 10px;background:#fff;text-align:left}
+    .category-list button.active{background:var(--soft);color:var(--accent);font-weight:800}
+    .drag{color:#9aa59f}.inline-actions{display:flex;gap:7px;justify-content:flex-end}
+    .suggestions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+    .suggestion{border:1px solid var(--line);background:#fafcfb;border-radius:9px;padding:9px;text-align:left}
+    .suggestion small{display:block;color:var(--muted);margin-bottom:3px}
+    .facet-panel{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+    .facet-group b{display:block;font-size:11px;margin-bottom:6px}.facet-group label{display:block;color:#4e5c55;margin:5px 0}
+    .footer-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+    .mobile-toggle{display:none}
+    @media(max-width:950px){.app{grid-template-columns:1fr} aside{height:auto;position:static;padding:14px}.brand-sub,.phase{display:none}
+      nav{display:flex;overflow:auto}nav button{width:auto;white-space:nowrap}.top{height:60px}.g4,.g3{grid-template-columns:repeat(2,1fr)}
+      .g2{grid-template-columns:1fr}.category-grid{grid-template-columns:repeat(3,1fr)}.frames{grid-template-columns:repeat(2,1fr)}
+      main{padding:0 16px 35px}.suggestions{grid-template-columns:repeat(2,1fr)}.facet-panel{grid-template-columns:repeat(2,1fr)}
+      .workflow-head{align-items:flex-start;overflow:auto}.workflow-head .stepper{min-width:720px}.workflow-tools{position:sticky;right:0;background:white}
+      .manage-layout{grid-template-columns:1fr}.selected-editor{grid-template-columns:150px 1fr}}
+    @media(max-width:560px){.g4,.g3{grid-template-columns:1fr}.stepper{grid-template-columns:1fr;gap:8px}
+      .stepper div{text-align:left;display:flex;align-items:center;gap:8px}.stepper div:before{margin:0}.stepper div:after{display:none}
+      .category-grid{grid-template-columns:repeat(2,1fr)}.top-actions .ghost{display:none}.phone{width:100%}
+      .selected-editor{grid-template-columns:1fr}.ingredient-row{grid-template-columns:1fr 1fr}.ingredient-row.header{display:none}.ingredient-actions{grid-column:2;justify-content:flex-end}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">나의 생활북</div>
+    <div class="brand-sub">MyDocuMgm · Wireframe v7</div>
+    <nav id="nav">
+      <div class="phase">나의 작업</div>
+      <button data-screen="dashboard" class="active">⌂ 작업보드</button>
+      <button data-screen="library">☷ 작업목록</button>
+      <div class="phase">설정</div>
+      <button data-screen="categories">⚙ 분류 관리</button>
+      <div class="phase">휴대폰</div>
+      <button data-screen="mobile">▯ 모바일 읽기</button>
+    </nav>
+  </aside>
+  <main>
+    <header class="top">
+      <h1 id="screenTitle">작업보드</h1>
+      <div class="top-actions"><button class="btn primary" data-go="collect">새 자료 수집</button></div>
+    </header>
+
+    <section id="taskmap" class="screen">
+      <div class="eyebrow">INFORMATION ARCHITECTURE</div>
+      <h2>Task를 화면에 먼저 배치합니다</h2>
+      <p class="lead">DB 테이블이 아니라 실제 사용 순서를 기준으로 한 첫 화면 구조입니다. 자동 처리와 사용자 확정을 분리했습니다.</p>
+      <div class="card">
+        <div class="flow">
+          <div class="node"><b>T1. 수집</b><br><span class="status gray">URL 입력</span></div><span class="arrow">→</span>
+          <div class="node"><b>T2. 추출</b><br><span class="status gray">본문·댓글·영상</span></div><span class="arrow">→</span>
+          <div class="node"><b>T3. AI 검토</b><br><span class="status warn">사용자 확인</span></div><span class="arrow">→</span>
+          <div class="node"><b>T4. 편집</b><br><span class="status gray">분류별 정보</span></div><span class="arrow">→</span>
+          <div class="node"><b>T5. 보관</b><br><span class="status">속성·태그 색인</span></div><span class="arrow">→</span>
+          <div class="node"><b>T6. 발행</b><br><span class="status gray">초안·복사</span></div>
+        </div>
+      </div>
+      <div class="grid g3" style="margin-top:16px">
+        <div class="card"><h3>수집·분석</h3><div class="task"><span class="num">1</span><div><b>URL 등록</b><br><small>지원 여부·중복 확인</small></div></div><div class="task"><span class="num">2</span><div><b>근거 준비</b><br><small>본문·댓글·OCR·음성</small></div></div><div class="task"><span class="num">3</span><div><b>Codex 분석</b><br><small>제목·요약·분류·태그</small></div></div></div>
+        <div class="card"><h3>사용자 검토·보관</h3><div class="task"><span class="num">4</span><div><b>불확실 정보 확인</b><br><small>분량·효능·주소·가격</small></div></div><div class="task"><span class="num">5</span><div><b>분류별 편집</b><br><small>요리·장소·제품 등</small></div></div><div class="task"><span class="num">6</span><div><b>이미지 단계화</b><br><small>선택·순서·설명·공개</small></div></div></div>
+        <div class="card"><h3>열람·발행</h3><div class="task"><span class="num">7</span><div><b>통합 검색</b><br><small>주재료·브랜드·구매처·태그</small></div></div><div class="task"><span class="num">8</span><div><b>모바일 열람</b><br><small>게시된 블로그 우선</small></div></div><div class="task"><span class="num">9</span><div><b>블로그 초안</b><br><small>HTML·Markdown·이미지</small></div></div></div>
+      </div>
+      <div class="note" style="margin-top:16px"><b>설계 판단:</b> “수집”과 “등록 완료”를 한 화면에서 끝내지 않습니다. AI 결과가 틀릴 수 있으므로 분석 검토가 독립된 승인 단계여야 합니다.</div>
+    </section>
+
+    <section id="dashboard" class="screen active">
+      <div class="eyebrow">DESKTOP HOME</div><h2>오늘 처리할 자료가 먼저 보입니다</h2><p class="lead">분류 통계보다 미완료 Task를 우선 배치한 작업형 홈입니다.</p>
+      <div class="grid g4">
+        <div class="card"><h3>수집함</h3><div class="metric">8 <small>건</small></div><p>아직 검토하지 않은 자료</p></div>
+        <div class="card"><h3>확인 필요</h3><div class="metric">3 <small>건</small></div><p>분량·가격·주소 확인</p></div>
+        <div class="card"><h3>저장 완료</h3><div class="metric">42 <small>건</small></div><p>검색 가능한 자료</p></div>
+        <div class="card"><h3>발행 대기</h3><div class="metric">5 <small>건</small></div><p>블로그 초안 준비</p></div>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card"><h3>다음 작업</h3><div class="task"><span class="num">!</span><div><b>새우 토스트 분량 확인</b><br><small>요리 · 분석 검토</small></div></div><div class="task"><span class="num">2</span><div><b>다낭 약국 장소정보 보완</b><br><small>여행 · 상세 편집</small></div></div><div class="task"><span class="num">3</span><div><b>허리 운동 캡처 순서 지정</b><br><small>운동 · 이미지 단계</small></div></div></div>
+        <div class="card"><h3>분류 바로가기</h3><div class="category-grid" style="grid-template-columns:repeat(3,1fr)"><button class="category">가볼곳</button><button class="category">요리</button><button class="category">운동</button><button class="category">청소&세탁</button><button class="category">여행</button><button class="category">제품</button></div></div>
+      </div>
+    </section>
+
+    <section id="collect" class="screen">
+      <div class="workflow" data-current="collect"></div>
+      <div class="eyebrow">TASK 1 · COLLECT</div><h2>URL 하나로 수집을 시작합니다</h2><p class="lead">자동 추출이 실패해도 직접 붙여넣기와 파일 선택으로 계속 진행할 수 있어야 합니다.</p>
+      <div class="url-box"><input class="input" value="https://www.instagram.com/reel/..." aria-label="수집 URL"><button class="btn primary" data-go="review">분석 준비</button></div>
+      <div class="grid g2">
+        <div class="card"><h3>수집 설정</h3><div class="field"><label>우선 확인할 항목</label><select class="input"><option>본문 + 대표 댓글 + 영상</option></select></div><div class="field"><label>출처 표시</label><input class="input" value="Instagram"></div><div class="field"><label>중복 처리</label><select class="input"><option>기존 자료를 보여주고 사용자가 결정</option></select></div></div>
+        <div class="card"><h3>자동 수집이 안 될 때</h3><button class="btn" style="width:100%;margin-bottom:8px">본문 직접 붙여넣기</button><button class="btn" style="width:100%;margin-bottom:8px">댓글 직접 붙여넣기</button><button class="btn" style="width:100%">영상·이미지 파일 선택</button><p>로그인 우회나 비공개 게시물 수집은 제공하지 않습니다.</p></div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="library">닫기</button><div class="right"><button class="btn primary" data-go="review">다음 · 분석 검토</button></div></div>
+    </section>
+
+    <section id="review" class="screen">
+      <div class="workflow" data-current="review"></div>
+      <div class="eyebrow">TASK 3 · REVIEW</div><h2>AI 결과보다 근거를 먼저 확인합니다</h2><p class="lead">제목·분류·태그는 제안일 뿐이며, 위험 정보는 확정 전 반드시 사용자 검토가 필요합니다.</p>
+      <div class="grid g2">
+        <div>
+          <div class="card"><h3>Codex 제안</h3><div class="field"><label>제목</label><input class="input" value="바삭한 새우 토스트 만들기"></div><div class="field"><label>한 줄 요약</label><textarea class="input">새우 반죽을 식빵에 올려 바삭하게 익히는 간단한 간식입니다.</textarea></div><div class="field"><label>추천 분류</label><div class="category-grid"><button class="category selected">요리</button><button class="category">팁</button><button class="category">기타</button></div></div><div class="field"><label>추천 태그</label><span class="tag">#새우</span><span class="tag">#간단요리</span><span class="tag">#간식</span><button class="btn">+ 태그</button></div></div>
+        </div>
+        <div>
+          <div class="card"><h3>근거와 확인 필요</h3><div class="evidence"><b>영상 자막 · 00:14</b><br>“새우 페이스트 한 스푼 반”</div><div class="evidence"><b>본문</b><br>재료와 조리 순서 설명이 포함되어 있습니다.</div><div class="evidence uncertain"><b>확인 필요</b><br>오일 종류가 화면에서 명확하지 않습니다.</div><div class="evidence uncertain"><b>효능·안전 표현</b><br>검증되지 않은 건강 효과는 블로그 초안에서 제외합니다.</div></div>
+        </div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="collect">이전 · URL</button><div class="right"><button class="btn">임시 저장</button><button class="btn primary" data-go="edit">다음 · 분류별 편집</button></div></div>
+    </section>
+
+    <section id="edit" class="screen">
+      <div class="workflow" data-current="edit"></div>
+      <div class="eyebrow">TASK 4 · CATEGORY EDIT</div><h2>공통 정보와 요리 정보를 나눠 편집합니다</h2><p class="lead">메인 분류를 바꾸면 기존 상세값을 자동 삭제하지 않고 충돌을 먼저 보여줍니다.</p>
+      <div class="grid g2">
+        <div class="card"><h3>공통 정보</h3><div class="field"><label>메인 분류</label><select class="input"><option>요리</option></select></div><div class="field"><label>상태</label><select class="input"><option>검토 필요</option><option>저장 완료</option></select></div><div class="field"><label>공개 범위</label><select class="input"><option>비공개 전용</option><option>공개 가능</option></select></div><div class="field"><label>출처</label><input class="input" value="Instagram · 원본 링크 유지"></div></div>
+        <div class="card">
+          <h3>요리 상세</h3>
+          <div class="grid g2">
+            <div class="field"><label>소요시간</label><input class="input" value="20분"></div>
+            <div class="field"><label>난이도</label><select class="input"><option>쉬움</option></select></div>
+          </div>
+          <div class="field">
+            <label>검색용 주재료 <span class="help" tabindex="0">?<span class="tip">주재료는 재료표에서 지정하며 여러 개를 선택할 수 있습니다.</span></span></label>
+            <div id="primaryIngredients"><span class="query-chip"><span class="primary-name">새우</span> <button type="button" onclick="editPrimaryIngredient(this)" aria-label="새우 주재료 수정">수정</button><button type="button" onclick="this.parentElement.remove()" aria-label="새우 주재료 해제">×</button></span></div>
+            <button class="btn" style="margin-top:8px" type="button" onclick="openIngredientModal(true)">+ 주재료 지정</button>
+          </div>
+          <div class="field">
+            <label>재료와 분량</label>
+            <div class="ingredient-row header"><span>재료명</span><span>분량</span><span>구분</span><span>관리</span></div>
+            <div id="ingredientRows">
+              <div class="ingredient-row"><input class="input" value="새우"><input class="input" value="200g"><select class="input"><option>주재료</option><option>부재료</option></select><div class="ingredient-actions"><button class="btn" type="button" title="수정" aria-label="새우 수정" onclick="editIngredient(this)">✎</button><button class="btn" type="button" title="삭제" aria-label="새우 삭제" onclick="deleteIngredient(this)">🗑</button></div></div>
+              <div class="ingredient-row"><input class="input" value="새우 페이스트"><input class="input" value="1.5큰술"><select class="input"><option>부재료</option><option>주재료</option></select><div class="ingredient-actions"><button class="btn" type="button" title="수정" aria-label="새우 페이스트 수정" onclick="editIngredient(this)">✎</button><button class="btn" type="button" title="삭제" aria-label="새우 페이스트 삭제" onclick="deleteIngredient(this)">🗑</button></div></div>
+              <div class="ingredient-row"><input class="input" value="오일"><input class="input" value="종류 미확인"><select class="input"><option>확인 필요</option><option>부재료</option><option>주재료</option></select><div class="ingredient-actions"><button class="btn" type="button" title="수정" aria-label="오일 수정" onclick="editIngredient(this)">✎</button><button class="btn" type="button" title="삭제" aria-label="오일 삭제" onclick="deleteIngredient(this)">🗑</button></div></div>
+            </div>
+          </div>
+          <button class="btn primary" type="button" onclick="openIngredientModal(false)">+ 재료 추가</button>
+        </div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="review">이전 · 분석 검토</button><div class="right"><button class="btn">임시 저장</button><button class="btn primary" data-go="media">다음 · 이미지</button></div></div>
+    </section>
+
+    <section id="media" class="screen">
+      <div class="workflow" data-current="media"></div>
+      <div class="eyebrow">TASK 6 · MEDIA STEPS</div><h2>이미지 선택</h2>
+      <div class="media-toolbar">
+        <span class="media-summary">총 186장 · 선택 3장</span>
+        <button class="btn primary" type="button">전체 186</button>
+        <button class="btn" type="button">선택 3</button>
+        <button class="btn" type="button">중복 후보 28</button>
+        <span class="spacer"></span>
+        <select class="input" style="width:auto"><option>시간순</option><option>유사도순</option></select>
+        <select class="input" style="width:auto"><option>24개씩</option><option>48개씩</option><option>96개씩</option></select>
+      </div>
+      <div class="frames">
+        <div class="frame selected"><input class="frame-check" type="checkbox" checked aria-label="00:05 선택"><div class="frame-img">00:05</div><div class="frame-meta"><b>1단계</b><span class="status">선택</span></div></div>
+        <div class="frame selected"><input class="frame-check" type="checkbox" checked aria-label="00:14 선택"><div class="frame-img">00:14</div><div class="frame-meta"><b>2단계</b><span class="status">선택</span></div></div>
+        <div class="frame selected"><input class="frame-check" type="checkbox" checked aria-label="00:27 선택"><div class="frame-img">00:27</div><div class="frame-meta"><b>3단계</b><span class="status">선택</span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="00:31 선택"><div class="frame-img">00:31</div><div class="frame-meta"><span>유사 프레임</span><span class="status warn">중복</span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="00:36 선택"><div class="frame-img">00:36</div><div class="frame-meta"><span>후보 5</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="00:42 선택"><div class="frame-img">00:42</div><div class="frame-meta"><span>후보 6</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="00:48 선택"><div class="frame-img">00:48</div><div class="frame-meta"><span>후보 7</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="00:54 선택"><div class="frame-img">00:54</div><div class="frame-meta"><span>후보 8</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="01:02 선택"><div class="frame-img">01:02</div><div class="frame-meta"><span>후보 9</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="01:08 선택"><div class="frame-img">01:08</div><div class="frame-meta"><span>후보 10</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="01:14 선택"><div class="frame-img">01:14</div><div class="frame-meta"><span>후보 11</span><span></span></div></div>
+        <div class="frame"><input class="frame-check" type="checkbox" aria-label="01:20 선택"><div class="frame-img">01:20</div><div class="frame-meta"><span>후보 12</span><span></span></div></div>
+      </div>
+      <div class="pager"><button class="btn" type="button">‹</button><button class="btn primary" type="button">1</button><button class="btn" type="button">2</button><button class="btn" type="button">3</button><span>…</span><button class="btn" type="button">8</button><button class="btn" type="button">›</button></div>
+      <div class="selected-editor">
+        <div class="frame-img">선택 이미지<br>00:05</div>
+        <div>
+          <h3>선택 이미지 편집</h3>
+          <div class="grid g2"><div class="field"><label>단계 순서</label><input class="input" value="1"></div><div class="field"><label>단계 제목</label><input class="input" value="새우 손질"></div></div>
+          <div class="field"><label>설명</label><input class="input" value="물기를 제거하고 잘게 다집니다."></div>
+          <label><input type="checkbox"> 블로그 공개 허용</label>
+        </div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="edit">이전 · 분류별 편집</button><div class="right"><button class="btn">후보 다시 만들기</button><button class="btn primary" data-go="detail">다음 · 자료 상세</button></div></div>
+    </section>
+
+    <section id="library" class="screen">
+      <div class="eyebrow">WORK LIST · STRUCTURED SEARCH</div><h2>대분류·중분류·상태와 검색어로 찾습니다</h2><p class="lead">태그를 화면에 나열하지 않습니다. 분류별 속성으로 범위를 좁히고, 검색어 범위를 전체 또는 태그로 선택합니다.</p>
+      <div class="search-builder" style="margin-bottom:14px">
+        <div class="grid g4">
+          <div class="field"><label>대분류 <span class="help" tabindex="0">?<span class="tip">요리, 제품, 여행 등 자료의 기본 분류입니다.</span></span></label><select id="majorCategory" class="input"><option value="">전체</option><option value="cooking" selected>요리</option><option value="product">제품</option><option value="place">가볼곳</option><option value="travel">여행</option><option value="exercise">운동</option><option value="cleaning">청소&세탁</option><option value="photo">사진</option><option value="study">공부</option><option value="phone">폰&컴</option><option value="tip">팁</option><option value="other">기타</option></select></div>
+          <div class="field"><label>중분류 속성 <span class="help" tabindex="0">?<span class="tip">선택한 대분류에 맞춰 검색 속성이 자동으로 바뀝니다.</span></span></label><select id="middleAttribute" class="input"><option value="ingredient">주재료</option><option value="method">조리방법</option><option value="difficulty">난이도</option><option value="time">소요시간</option></select></div>
+          <div class="field"><label>속성값 <span class="help" tabindex="0">?<span class="tip">중분류 속성에 해당하는 값을 입력합니다. 예: 주재료=새우, 구매처=다이소.</span></span></label><input id="attributeValue" class="input" value="새우" placeholder="예: 새우"></div>
+          <div class="field"><label>상태</label><select class="input"><option>전체 상태</option><option>진행 중</option><option>검토 필요</option><option>저장 완료</option><option>블로그 초안 있음</option><option>완료</option></select></div>
+        </div>
+        <div class="search-row" style="padding-top:12px;border-top:1px solid var(--line)">
+          <select id="searchScope" class="input" title="전체 검색은 모든 내용에서, 태그만 검색은 태그명에서만 찾습니다." style="flex:0 0 150px;min-width:150px"><option value="all">전체 검색</option><option value="tag">태그만 검색</option></select>
+          <input id="searchKeyword" class="input" value="간단한 새우 요리" placeholder="검색어를 입력하세요" aria-label="검색어">
+          <button class="btn primary" onclick="runDemoSearch()">검색</button>
+          <button class="btn" onclick="resetDemoSearch()">초기화</button>
+        </div>
+        <div id="searchExplanation" class="helper">현재 조건: <b>요리 → 주재료 → 새우</b> 안에서 제목·요약·상세내용·구조화 속성·태그 전체를 검색합니다.</div>
+      </div>
+      <div class="card"><table class="table"><thead><tr><th>자료</th><th>분류</th><th>현재 단계</th><th>상태</th><th>태그</th><th>수정</th></tr></thead><tbody><tr data-go="detail" style="cursor:pointer"><td><div style="display:flex;gap:10px;align-items:center"><div class="thumb">이미지</div><b>바삭한 새우 토스트</b></div></td><td>요리</td><td><span class="status">5/7 자료 상세</span></td><td><span class="status warn">확인 필요</span></td><td>#새우 #간식</td><td>오늘</td></tr><tr data-go="review" style="cursor:pointer"><td><div style="display:flex;gap:10px;align-items:center"><div class="thumb">장소</div><b>다낭에서 가볼 약국</b></div></td><td>여행</td><td><span class="status warn">2/7 분석 검토</span></td><td><span class="status gray">진행 중</span></td><td>#다낭 #쇼핑</td><td>어제</td></tr><tr data-go="complete" style="cursor:pointer"><td><div style="display:flex;gap:10px;align-items:center"><div class="thumb">제품</div><b>민감 피부 판테놀 앰플</b></div></td><td>제품</td><td><span class="status">7/7 완료</span></td><td><span class="status">블로그 초안 있음</span></td><td>#스킨케어</td><td>3일 전</td></tr></tbody></table></div>
+    </section>
+
+    <section id="detail" class="screen">
+      <div class="workflow" data-current="detail" data-tools="true"></div>
+      <div class="eyebrow">CONTENT DETAIL</div><h2>바삭한 새우 토스트</h2><p class="lead">요리 · #새우 #간단요리 #간식　<span class="status">READY</span></p>
+      <div class="grid g2">
+        <div class="card"><div class="frame-img" style="aspect-ratio:16/8">대표 이미지</div><h3 style="margin-top:16px">핵심 요약</h3><p>새우 반죽을 식빵에 얹어 노릇하게 익히는 간단한 간식입니다.</p><h3>재료</h3><table class="table"><tr><td>새우</td><td>200g</td></tr><tr><td>새우 페이스트</td><td>1.5큰술</td></tr><tr><td>식빵</td><td>4장</td></tr></table></div>
+        <div class="card"><h3>조리 단계</h3><div class="task"><span class="num">1</span><div><b>새우 손질</b><br><small>물기를 제거하고 잘게 다집니다.</small></div></div><div class="task"><span class="num">2</span><div><b>반죽 섞기</b><br><small>재료와 새우 페이스트를 섞습니다.</small></div></div><div class="task"><span class="num">3</span><div><b>식빵에 올리기</b><br><small>두께가 일정하도록 펴 바릅니다.</small></div></div><div class="note" style="margin-top:12px">출처: Instagram 원본 링크 · 캡처는 현재 비공개</div></div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="media">이전 · 이미지</button><div class="right"><button class="btn primary" data-go="blog">다음 · 블로그 초안</button></div></div>
+    </section>
+
+    <section id="blog" class="screen">
+      <div class="workflow" data-current="blog"></div>
+      <div class="eyebrow">TASK 9 · BLOG DRAFT</div><h2>공개할 정보만 골라 초안을 만듭니다</h2><p class="lead">자동 게시가 아니라 미리보기·복사·이미지 묶음 내보내기가 핵심입니다.</p>
+      <div class="grid g2">
+        <div class="card"><h3>발행 설정</h3><div class="field"><label>템플릿</label><select class="input"><option>요리 · 단계형</option></select></div><div class="field"><label>형식</label><select class="input"><option>네이버 블로그용 서식 복사</option><option>HTML</option><option>Markdown</option></select></div><div class="field"><label>포함 항목</label><label><input type="checkbox" checked> 재료</label><br><label><input type="checkbox" checked> 단계 설명</label><br><label><input type="checkbox"> 공개 허용 캡처</label><br><label><input type="checkbox" checked> 원문 출처</label></div><div class="note">공개 허용 캡처가 0개라 현재 이미지 없이 생성됩니다.</div></div>
+        <div class="card"><h3>미리보기</h3><h2 style="font-size:22px">바삭한 새우 토스트 만들기</h2><p>간단하게 즐길 수 있는 새우 토스트를 정리했습니다.</p><h3>재료</h3><p>새우 200g · 새우 페이스트 1.5큰술 · 식빵 4장</p><h3>만드는 순서</h3><ol><li>새우를 손질합니다.</li><li>반죽을 섞습니다.</li><li>식빵에 고르게 올립니다.</li></ol><p><small>출처: 원본 Instagram 게시물</small></p></div>
+      </div>
+      <div class="footer-actions"><button class="btn">HTML 패키지</button><button class="btn">Markdown 패키지</button><button class="btn primary" onclick="alert('본문이 복사되는 동작입니다.')">본문 복사</button></div>
+      <div class="step-actions"><button class="btn" data-go="detail">이전 · 자료 상세</button><div class="right"><button class="btn primary" data-go="complete">다음 · 완료</button></div></div>
+    </section>
+
+    <section id="complete" class="screen">
+      <div class="workflow" data-current="complete"></div>
+      <div class="eyebrow">TASK 7 · COMPLETE</div><h2>자료 작업을 완료했습니다</h2><p class="lead">원본 자료, 검색 속성, 이미지 단계와 블로그 초안 상태가 한곳에 기록됩니다.</p>
+      <div class="grid g3">
+        <div class="card"><h3>자료</h3><div class="metric">READY</div><p>검색·열람 가능</p></div>
+        <div class="card"><h3>이미지</h3><div class="metric">3 <small>장</small></div><p>공개 허용 0장</p></div>
+        <div class="card"><h3>블로그 초안</h3><div class="metric">완료</div><p>HTML·Markdown 패키지 준비</p></div>
+      </div>
+      <div class="step-actions"><button class="btn" data-go="blog">이전 · 블로그 초안</button><div class="right"><button class="btn" data-go="detail">자료 다시 보기</button><button class="btn primary" data-go="library">작업목록으로</button></div></div>
+    </section>
+
+    <section id="categories" class="screen">
+      <div class="eyebrow">SETTINGS</div><h2>분류 관리</h2>
+      <div class="manage-layout">
+        <div class="card category-list">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h3>대분류</h3><button class="btn" style="width:auto;border:1px solid var(--line);padding:7px 10px">+ 추가</button></div>
+          <button class="active"><span>요리</span><span>4개 속성</span></button>
+          <button><span>제품</span><span>4개 속성</span></button>
+          <button><span>가볼곳</span><span>4개 속성</span></button>
+          <button><span>여행</span><span>4개 속성</span></button>
+          <button><span>운동</span><span>4개 속성</span></button>
+          <button><span>청소&세탁</span><span>4개 속성</span></button>
+          <button><span>사진</span><span>4개 속성</span></button>
+          <button><span>공부</span><span>4개 속성</span></button>
+          <button><span>폰&컴</span><span>4개 속성</span></button>
+          <button><span>팁</span><span>3개 속성</span></button>
+          <button><span>기타</span><span>1개 속성</span></button>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3>요리 속성</h3>
+            <div class="inline-actions"><button class="btn">대분류 이름 변경</button><button class="btn primary">+ 속성 추가</button></div>
+          </div>
+          <table class="table">
+            <thead><tr><th>순서</th><th>속성명 <span class="help" tabindex="0">?<span class="tip">등록 양식과 작업목록 검색의 중분류 항목으로 사용됩니다.</span></span></th><th>입력 방식</th><th>검색 사용</th><th>필수</th><th></th></tr></thead>
+            <tbody>
+              <tr><td class="drag">☰ 1</td><td><b>주재료</b></td><td>검색어 입력</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><button class="btn">편집</button></td></tr>
+              <tr><td class="drag">☰ 2</td><td><b>조리방법</b></td><td>목록 선택</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><button class="btn">편집</button></td></tr>
+              <tr><td class="drag">☰ 3</td><td><b>난이도</b></td><td>목록 선택</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><button class="btn">편집</button></td></tr>
+              <tr><td class="drag">☰ 4</td><td><b>소요시간</b></td><td>숫자 + 단위</td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><button class="btn">편집</button></td></tr>
+            </tbody>
+          </table>
+          <div class="step-actions"><button class="btn red" onclick="alert('사용 중인 분류는 즉시 삭제하지 않고 비활성화합니다.')">대분류 비활성화</button><div class="right"><button class="btn primary">저장</button></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="mobile" class="screen">
+      <div class="eyebrow">MOBILE READING</div><h2>휴대폰에서는 읽기와 다시 찾기가 중심입니다</h2><p class="lead">등록·복잡한 편집은 PC에 남기고, 휴대폰 화면은 공개된 블로그 또는 이후 모바일 읽기 확장 기준으로 사용합니다.</p>
+      <div class="phone"><div class="phone-top"><b>나의 생활북</b><div style="margin-top:12px"><input class="input" value="새우" aria-label="모바일 검색"></div><div style="margin-top:9px"><span class="query-chip">주재료: 새우 ×</span></div><div style="margin-top:9px"><span class="tag">#간단요리</span><span class="tag">#15분요리</span><span class="tag">#아이간식</span></div></div><div class="phone-body"><div class="mobile-card"><div class="mobile-img"></div><div class="mobile-copy"><span class="status">요리</span><h3>바삭한 새우 토스트</h3><p>주재료 새우 · 20분 · 쉬움</p></div></div><div class="mobile-card"><div class="mobile-img"></div><div class="mobile-copy"><span class="status">요리</span><h3>마늘 버터 새우</h3><p>주재료 새우 · 15분 · 쉬움</p></div></div></div></div>
+    </section>
+  </main>
+</div>
+<div id="ingredientModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ingredientModalTitle" onclick="if(event.target===this)closeIngredientModal()">
+  <div class="modal">
+    <div class="modal-head"><h3 id="ingredientModalTitle">재료 추가</h3><button class="btn" type="button" onclick="closeIngredientModal()" aria-label="닫기">×</button></div>
+    <div class="field"><label>재료명</label><input id="modalIngredientName" class="input" placeholder="예: 식빵"></div>
+    <div id="ingredientAmountField" class="field"><label>분량</label><input id="modalIngredientAmount" class="input" placeholder="예: 4장"></div>
+    <div id="ingredientTypeField" class="field"><label>구분</label><select id="modalIngredientType" class="input"><option>부재료</option><option>주재료</option><option>확인 필요</option></select></div>
+    <div class="modal-footer"><button class="btn" type="button" onclick="closeIngredientModal()">취소</button><button class="btn primary" type="button" onclick="saveIngredientModal()">저장</button></div>
+  </div>
+</div>
+<script>
+  const titles={taskmap:"Task·화면 맵",dashboard:"작업보드",collect:"URL 수집",review:"분석 검토",edit:"분류별 편집",media:"이미지",library:"작업목록",detail:"자료 상세",blog:"블로그 초안",complete:"완료",categories:"분류 관리",mobile:"모바일 읽기"};
+  const flow=[
+    ["collect","URL"],["review","분석 검토"],["edit","분류별 편집"],["media","이미지"],
+    ["detail","자료 상세"],["blog","블로그 초안"],["complete","완료"]
+  ];
+  document.querySelectorAll(".workflow").forEach(host=>{
+    const current=host.dataset.current;
+    const index=flow.findIndex(x=>x[0]===current);
+    const steps=flow.map((x,i)=>`<div class="${i<index?"done":i===index?"on":""}">${x[1]}</div>`).join("");
+    const tools=host.dataset.tools?`<div class="workflow-tools"><button class="btn" data-go="edit">편집</button><button class="btn" onclick="alert('삭제 확인 창이 열립니다.')">삭제</button><button class="btn" data-go="library">닫기</button></div>`:"";
+    host.innerHTML=`<div class="workflow-head"><div class="stepper">${steps}</div>${tools}</div>`;
+  });
+  const categoryAttributes={
+    "":{label:"전체",attrs:[["","전체 속성","속성값 전체"]]},
+    cooking:{label:"요리",attrs:[["ingredient","주재료","예: 새우"],["method","조리방법","예: 볶음"],["difficulty","난이도","예: 쉬움"],["time","소요시간","예: 20분"]]},
+    product:{label:"제품",attrs:[["brand","브랜드","예: 이케아"],["store","구매처","예: 다이소"],["purpose","용도","예: 수납"],["price","가격대","예: 1만원 이하"]]},
+    place:{label:"가볼곳",attrs:[["region","지역","예: 성수동"],["placeType","장소 유형","예: 카페"],["parking","주차","예: 가능"],["visitStatus","방문 상태","예: 가고 싶음"]]},
+    travel:{label:"여행",attrs:[["countryRegion","국가·지역","예: 베트남 다낭"],["transport","교통","예: 렌터카"],["scheduleType","일정 유형","예: 당일"],["theme","여행 테마","예: 가족 여행"]]},
+    exercise:{label:"운동",attrs:[["bodyPart","운동 부위","예: 허리"],["equipment","준비물","예: 폼롤러"],["difficulty","난이도","예: 초급"],["duration","운동 시간","예: 10분"]]},
+    cleaning:{label:"청소&세탁",attrs:[["target","대상","예: 운동화"],["material","재질","예: 가죽"],["detergent","세제·제품","예: 중성세제"],["method","방법","예: 손세탁"]]},
+    photo:{label:"사진",attrs:[["device","기기","예: 아이폰"],["subject","촬영 대상","예: 음식"],["technique","촬영 기법","예: 역광"],["editing","보정","예: 밝기"]]},
+    study:{label:"공부",attrs:[["subject","분야","예: 영어"],["topic","주제","예: 회화"],["level","난이도","예: 초급"],["material","참고 자료","예: 유튜브"]]},
+    phone:{label:"폰&컴",attrs:[["deviceOs","기기·OS","예: Windows 11"],["problemType","문제 유형","예: 속도 저하"],["settingType","설정 유형","예: 알림"],["risk","위험도","예: 낮음"]]},
+    tip:{label:"팁",attrs:[["situation","적용 상황","예: 장보기"],["topic","주제","예: 절약"],["difficulty","난이도","예: 쉬움"]]},
+    other:{label:"기타",attrs:[["topic","주제","예: 생활 기록"]]}
+  };
+  const majorCategory=document.getElementById("majorCategory");
+  const middleAttribute=document.getElementById("middleAttribute");
+  const attributeValue=document.getElementById("attributeValue");
+  const searchScope=document.getElementById("searchScope");
+  const searchKeyword=document.getElementById("searchKeyword");
+  const searchExplanation=document.getElementById("searchExplanation");
+  function renderMiddleAttributes(clearValue=true){
+    const config=categoryAttributes[majorCategory.value]||categoryAttributes[""];
+    middleAttribute.innerHTML=config.attrs.map(x=>`<option value="${x[0]}" data-placeholder="${x[2]}">${x[1]}</option>`).join("");
+    if(clearValue)attributeValue.value="";
+    attributeValue.placeholder=config.attrs[0][2];
+  }
+  function updateAttributePlaceholder(){
+    attributeValue.placeholder=middleAttribute.selectedOptions[0]?.dataset.placeholder||"속성값 입력";
+  }
+  function updateSearchScope(){
+    searchKeyword.placeholder=searchScope.value==="tag"?"태그명을 입력하세요 (예: 수납)":"제목·요약·상세내용·속성·태그 검색";
+  }
+  function runDemoSearch(){
+    const category=categoryAttributes[majorCategory.value]?.label||"전체";
+    const attribute=middleAttribute.selectedOptions[0]?.textContent||"전체 속성";
+    const value=attributeValue.value.trim();
+    const keyword=searchKeyword.value.trim();
+    const path=[category,attribute,value].filter(Boolean).join(" → ");
+    const range=searchScope.value==="tag"?"태그명만":"제목·요약·상세내용·구조화 속성·태그 전체에서";
+    searchExplanation.innerHTML=`현재 조건: <b>${path}</b> 안에서 ${keyword?`검색어 “${keyword}”를 `:"입력한 검색어를 "}${range} 검색합니다.`;
+  }
+  function resetDemoSearch(){
+    majorCategory.value="";
+    renderMiddleAttributes();
+    searchScope.value="all";
+    searchKeyword.value="";
+    updateSearchScope();
+    searchExplanation.innerHTML="대분류와 중분류 속성은 선택 사항입니다. 검색 범위가 <b>전체 검색</b>이면 제목·요약·상세내용·구조화 속성·태그를 함께 찾습니다.";
+  }
+  majorCategory.addEventListener("change",()=>renderMiddleAttributes());
+  middleAttribute.addEventListener("change",updateAttributePlaceholder);
+  searchScope.addEventListener("change",updateSearchScope);
+  let primaryOnly=false;
+  let editingPrimaryChip=null;
+  function openIngredientModal(asPrimary){
+    primaryOnly=asPrimary;
+    editingPrimaryChip=null;
+    document.getElementById("ingredientModalTitle").textContent=asPrimary?"주재료 지정":"재료 추가";
+    document.getElementById("ingredientAmountField").style.display=asPrimary?"none":"block";
+    document.getElementById("ingredientTypeField").style.display=asPrimary?"none":"block";
+    document.getElementById("modalIngredientName").value="";
+    document.getElementById("modalIngredientAmount").value="";
+    document.getElementById("ingredientModal").classList.add("open");
+    document.getElementById("modalIngredientName").focus();
+  }
+  function editPrimaryIngredient(button){
+    primaryOnly=true;
+    editingPrimaryChip=button.closest(".query-chip");
+    document.getElementById("ingredientModalTitle").textContent="주재료 수정";
+    document.getElementById("ingredientAmountField").style.display="none";
+    document.getElementById("ingredientTypeField").style.display="none";
+    document.getElementById("modalIngredientName").value=editingPrimaryChip.querySelector(".primary-name").textContent;
+    document.getElementById("ingredientModal").classList.add("open");
+    document.getElementById("modalIngredientName").focus();
+  }
+  function closeIngredientModal(){document.getElementById("ingredientModal").classList.remove("open")}
+  function saveIngredientModal(){
+    const name=document.getElementById("modalIngredientName").value.trim();
+    if(!name){alert("재료명을 입력해 주세요.");return}
+    if(primaryOnly){
+      if(editingPrimaryChip){
+        editingPrimaryChip.querySelector(".primary-name").textContent=name;
+        editingPrimaryChip.querySelector("button").setAttribute("aria-label",`${name} 주재료 수정`);
+        editingPrimaryChip.querySelectorAll("button")[1].setAttribute("aria-label",`${name} 주재료 해제`);
+      }else{
+        const chip=document.createElement("span");
+        chip.className="query-chip";
+        chip.innerHTML=`<span class="primary-name">${name}</span> <button type="button" onclick="editPrimaryIngredient(this)" aria-label="${name} 주재료 수정">수정</button><button type="button" onclick="this.parentElement.remove()" aria-label="${name} 주재료 해제">×</button>`;
+        document.getElementById("primaryIngredients").appendChild(chip);
+      }
+    }else{
+      const amount=document.getElementById("modalIngredientAmount").value.trim()||"분량 미입력";
+      const type=document.getElementById("modalIngredientType").value;
+      const row=document.createElement("div");
+      row.className="ingredient-row";
+      row.innerHTML=`<input class="input" value="${name}"><input class="input" value="${amount}"><select class="input"><option>${type}</option><option>주재료</option><option>부재료</option><option>확인 필요</option></select><div class="ingredient-actions"><button class="btn" type="button" title="수정" aria-label="${name} 수정" onclick="editIngredient(this)">✎</button><button class="btn" type="button" title="삭제" aria-label="${name} 삭제" onclick="deleteIngredient(this)">🗑</button></div>`;
+      document.getElementById("ingredientRows").appendChild(row);
+    }
+    closeIngredientModal();
+  }
+  function editIngredient(button){
+    const row=button.closest(".ingredient-row");
+    row.querySelector("input").focus();
+    button.textContent="✓";
+    setTimeout(()=>button.textContent="✎",800);
+  }
+  function deleteIngredient(button){
+    if(confirm("이 재료를 삭제할까요?"))button.closest(".ingredient-row").remove();
+  }
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")closeIngredientModal()});
+  function show(id){
+    document.querySelectorAll(".screen").forEach(x=>x.classList.toggle("active",x.id===id));
+    document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("active",x.dataset.screen===id));
+    document.getElementById("screenTitle").textContent=titles[id]||id;
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+  document.addEventListener("click",e=>{const target=e.target.closest("[data-screen],[data-go]");if(target)show(target.dataset.screen||target.dataset.go)});
+</script>
+</body>
+</html>
