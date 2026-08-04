@@ -12,6 +12,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ContentTag> ContentTags => Set<ContentTag>();
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+    public DbSet<ContentMediaLink> ContentMediaLinks => Set<ContentMediaLink>();
     public DbSet<SourceEvidence> SourceEvidence => Set<SourceEvidence>();
     public DbSet<PlaceDetails> PlaceDetails => Set<PlaceDetails>();
     public DbSet<CookingDetails> CookingDetails => Set<CookingDetails>();
@@ -100,6 +101,12 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
             table.HasCheckConstraint(
                 "CK_Contents_CurrentWorkflowStep",
                 "[CurrentWorkflowStep] IN ('URL','ANALYSIS_REVIEW','CATEGORY_EDIT','MEDIA','DETAIL','BLOG_DRAFT','COMPLETED')");
+            table.HasCheckConstraint(
+                "CK_Contents_SourceKind",
+                "[SourceKind] IS NULL OR [SourceKind] IN ('GENERIC','INSTAGRAM')");
+            table.HasCheckConstraint(
+                "CK_Contents_IntakeStatus",
+                "[IntakeStatus] IS NULL OR [IntakeStatus] IN ('URL_ACCEPTED','MANUAL_INPUT_REQUIRED','CONTENT_READY')");
         });
         content.HasKey(value => value.Id);
         content.Property(value => value.Title).HasMaxLength(200).IsRequired();
@@ -109,6 +116,11 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.Property(value => value.Visibility).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.ExperienceStatus).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.CurrentWorkflowStep).HasConversion<string>().HasMaxLength(30).HasDefaultValue(WorkflowStep.URL);
+        content.Property(value => value.OriginalUrl).HasMaxLength(2048);
+        content.Property(value => value.NormalizedUrl).HasMaxLength(2048);
+        content.Property(value => value.NormalizedUrlHash).HasColumnType("binary(32)");
+        content.Property(value => value.SourceKind).HasConversion<string>().HasMaxLength(20);
+        content.Property(value => value.IntakeStatus).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.UpdatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.DeletedAtUtc).HasColumnType("datetime2");
@@ -119,6 +131,9 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.HasIndex(value => new { value.CategoryId, value.Status, value.IsFavorite });
         content.HasIndex(value => new { value.CurrentWorkflowStep, value.UpdatedAtUtc });
         content.HasIndex(value => value.Title);
+        content.HasIndex(value => value.NormalizedUrlHash)
+            .IsUnique()
+            .HasFilter("[NormalizedUrlHash] IS NOT NULL");
     }
 
     private static void ConfigureChildren(ModelBuilder modelBuilder)
@@ -172,6 +187,20 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         media.HasIndex(value => new { value.ContentId, value.IsSelected, value.SourceTimestampMs });
         media.HasIndex(value => new { value.ContentId, value.Sha256 });
         media.HasOne(value => value.Content).WithMany(value => value.MediaAssets).HasForeignKey(value => value.ContentId).OnDelete(DeleteBehavior.Restrict);
+
+        var mediaLink = modelBuilder.Entity<ContentMediaLink>();
+        mediaLink.ToTable("ContentMediaLinks");
+        mediaLink.HasKey(value => new { value.ContentId, value.MediaAssetId });
+        mediaLink.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
+        mediaLink.HasIndex(value => value.MediaAssetId);
+        mediaLink.HasOne(value => value.Content)
+            .WithMany(value => value.LinkedMedia)
+            .HasForeignKey(value => value.ContentId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mediaLink.HasOne(value => value.MediaAsset)
+            .WithMany(value => value.LinkedContents)
+            .HasForeignKey(value => value.MediaAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         var evidence = modelBuilder.Entity<SourceEvidence>();
         evidence.ToTable("SourceEvidence");

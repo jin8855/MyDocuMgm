@@ -28,6 +28,7 @@ public sealed class EfModelTests
         Assert.Contains("CookingIngredients", tables);
         Assert.Contains("CategorySearchAttributes", tables);
         Assert.Contains("OtherDetails", tables);
+        Assert.Contains("ContentMediaLinks", tables);
         Assert.DoesNotContain("Publication", tables);
         Assert.DoesNotContain("ImportJobs", tables);
     }
@@ -42,6 +43,7 @@ public sealed class EfModelTests
         var ingredient = context.Model.FindEntityType(typeof(CookingIngredient))!;
         var step = context.Model.FindEntityType(typeof(ContentStep))!;
         var tag = context.Model.FindEntityType(typeof(Tag))!;
+        var mediaLink = context.Model.FindEntityType(typeof(ContentMediaLink))!;
 
         Assert.True(content.FindProperty(nameof(Content.RowVersion))!.IsConcurrencyToken);
         Assert.True(media.FindProperty(nameof(MediaAsset.RowVersion))!.IsConcurrencyToken);
@@ -55,6 +57,16 @@ public sealed class EfModelTests
         Assert.Contains(media.GetIndexes(), index => index.Properties.Select(property => property.Name)
             .SequenceEqual([nameof(MediaAsset.ContentId), nameof(MediaAsset.IsSelected), nameof(MediaAsset.SourceTimestampMs)]));
         Assert.Contains(step.GetForeignKeys(), key =>
+            key.PrincipalEntityType.ClrType == typeof(MediaAsset) &&
+            key.DeleteBehavior == DeleteBehavior.Restrict);
+        Assert.Contains(content.GetIndexes(), index =>
+            index.IsUnique &&
+            index.Properties.Single().Name == nameof(Content.NormalizedUrlHash) &&
+            index.GetFilter() == "[NormalizedUrlHash] IS NOT NULL");
+        Assert.Equal(
+            [nameof(ContentMediaLink.ContentId), nameof(ContentMediaLink.MediaAssetId)],
+            mediaLink.FindPrimaryKey()!.Properties.Select(property => property.Name));
+        Assert.Contains(mediaLink.GetForeignKeys(), key =>
             key.PrincipalEntityType.ClrType == typeof(MediaAsset) &&
             key.DeleteBehavior == DeleteBehavior.Restrict);
     }

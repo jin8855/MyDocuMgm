@@ -5,6 +5,7 @@ using MyDocuMgm.Application;
 using MyDocuMgm.Application.Categories;
 using MyDocuMgm.Application.CookingIngredients;
 using MyDocuMgm.Application.Contents.UpdateWorkflowStep;
+using MyDocuMgm.Application.UrlIntake;
 using MyDocuMgm.Infrastructure.Data;
 using MyDocuMgm.Infrastructure.Storage;
 
@@ -50,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<IMediaAssetRepository, EfMediaAssetRepository>();
         services.AddScoped<ICookingIngredientRepository, EfCookingIngredientRepository>();
         services.AddScoped<ICategoryManagementRepository, EfCategoryManagementRepository>();
+        services.AddScoped<IUrlIntakeRepository, EfUrlIntakeRepository>();
         services.AddScoped<LocalMediaStorage>();
         services.AddScoped<IMediaStorage>(provider => provider.GetRequiredService<LocalMediaStorage>());
         services.AddScoped<IMediaStorageReadiness>(provider => provider.GetRequiredService<LocalMediaStorage>());
@@ -59,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<CookingIngredientService>();
         services.AddScoped<CategoryManagementService>();
         services.AddScoped<UpdateWorkflowStepService>();
+        services.AddScoped<UrlIntakeService>();
         return services;
     }
 }

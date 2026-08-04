@@ -60,6 +60,7 @@ async function load() {
   const generation = ++loadGeneration
   resetWorkflowState()
   if (isNewWork.value) return
+  if (current.value === 'URL') return
 
   try {
     const [nextContent, nextIngredients] = await Promise.all([
@@ -136,6 +137,11 @@ async function unsetPrimary(value: CookingIngredient) {
 
 function markDirty() { dirty.value = true }
 
+function acceptUrl(contentId: string) {
+  dirty.value = false
+  if (contentId !== props.id) void router.replace(`/workflow/${contentId}/url`)
+}
+
 onBeforeRouteLeave((to) => {
   if (!dirty.value) return true
   pendingAction.value = () => { void router.push(to.fullPath) }
@@ -159,7 +165,7 @@ watch(() => [props.id, props.step], load, { immediate: true })
     <header class="page-title compact-title">
       <div>
         <span class="eyebrow">7단계 작업 흐름</span>
-        <h1>{{ content?.title ?? (isNewWork ? '새 작업' : '콘텐츠 불러오는 중') }}</h1>
+        <h1>{{ content?.title ?? (isNewWork ? '새 작업' : current === 'URL' ? 'URL 접수 작업' : '콘텐츠 불러오는 중') }}</h1>
         <p>{{ workflowSteps[currentIndex]?.label }} 단계에서 필요한 정보만 차분하게 확인합니다.</p>
       </div>
       <span v-if="dirty" class="dirty-indicator">저장하지 않은 변경</span>
@@ -171,7 +177,15 @@ watch(() => [props.id, props.step], load, { immediate: true })
       <button class="button" @click="router.push('/contents')">작업목록으로 돌아가기</button>
     </section>
 
-    <UrlStage v-else-if="current === 'URL'" :key="props.id" :empty="isNewWork" @dirty="markDirty" />
+    <UrlStage
+      v-else-if="current === 'URL'"
+      :key="props.id"
+      :content-id="props.id"
+      :new-work="isNewWork"
+      @dirty="markDirty"
+      @saved="dirty = false"
+      @accepted="acceptUrl"
+    />
     <section v-else-if="isNewWork" class="surface empty-state" data-testid="new-work-empty-stage">
       <h2>{{ workflowSteps[currentIndex]?.label }} 데이터가 없습니다</h2>
       <p>새 작업은 이전 작업의 데이터와 연결되지 않습니다. URL 단계부터 새 내용을 입력해 주세요.</p>

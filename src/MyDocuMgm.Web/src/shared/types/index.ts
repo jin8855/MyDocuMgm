@@ -5,6 +5,8 @@ export type ContentStatusValue = ContentStatus | number
 export type SearchScope = 'ALL' | 'TAG'
 export type MediaFilter = 'ALL' | 'SELECTED' | 'DUPLICATE' | 'DELETED'
 export type MediaSort = 'TIME_ASC' | 'TIME_DESC'
+export type ContentSourceKind = 'GENERIC' | 'INSTAGRAM'
+export type IntakeStatus = 'URL_ACCEPTED' | 'MANUAL_INPUT_REQUIRED' | 'CONTENT_READY'
 
 export interface SearchAttribute {
   id: string
@@ -112,4 +114,35 @@ export interface MediaPage {
 export interface MediaUploadResult {
   item: MediaItem
   reused: boolean
+}
+
+export interface UrlIntake {
+  id: string
+  originalUrl: string
+  normalizedUrl: string
+  sourceKind: ContentSourceKind
+  status: IntakeStatus
+  isDuplicate: boolean
+  manualBody: string | null
+  manualBodyPresent: boolean
+  linkedMediaIds: string[]
+}
+
+export interface LinkableMediaItem {
+  id: string
+  ownerContentId: string
+  originalFileName: string
+  thumbnailUrl: string
+  mimeType: string
+  sizeBytes: number
+  width: number
+  height: number
+}
+
+export interface LinkableMediaPage {
+  items: LinkableMediaItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
 }

@@ -31,6 +31,8 @@ public sealed class CategorySearchAttribute
 
 public sealed class Content
 {
+    public const int ManualBodyMaxLength = 20_000;
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CategoryId { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -41,6 +43,11 @@ public sealed class Content
     public bool IsFavorite { get; set; }
     public ExperienceStatus ExperienceStatus { get; set; } = ExperienceStatus.NONE;
     public WorkflowStep CurrentWorkflowStep { get; set; } = WorkflowStep.URL;
+    public string? OriginalUrl { get; set; }
+    public string? NormalizedUrl { get; set; }
+    public byte[]? NormalizedUrlHash { get; set; }
+    public ContentSourceKind? SourceKind { get; set; }
+    public IntakeStatus? IntakeStatus { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
@@ -50,6 +57,7 @@ public sealed class Content
     public ICollection<ContentStep> Steps { get; set; } = [];
     public ICollection<ContentTag> ContentTags { get; set; } = [];
     public ICollection<MediaAsset> MediaAssets { get; set; } = [];
+    public ICollection<ContentMediaLink> LinkedMedia { get; set; } = [];
     public ICollection<SourceEvidence> SourceEvidence { get; set; } = [];
     public PlaceDetails? PlaceDetails { get; set; }
     public CookingDetails? CookingDetails { get; set; }
@@ -84,6 +92,67 @@ public sealed class Content
         }
 
         CurrentWorkflowStep = next;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void AcceptUrl(
+        string originalUrl,
+        string normalizedUrl,
+        byte[] normalizedUrlHash,
+        ContentSourceKind sourceKind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(normalizedUrl);
+        if (normalizedUrlHash.Length != 32)
+        {
+            throw new ArgumentException("정규화 URL SHA-256은 32바이트여야 합니다.", nameof(normalizedUrlHash));
+        }
+        OriginalUrl = originalUrl;
+        NormalizedUrl = normalizedUrl;
+        NormalizedUrlHash = [.. normalizedUrlHash];
+        SourceKind = sourceKind;
+        IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.URL_ACCEPTED;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RequireManualInput()
+    {
+        if (IntakeStatus is null)
+        {
+            throw new DomainRuleException("URL_INTAKE_NOT_FOUND", "URL 접수 상태가 없습니다.");
+        }
+
+        if (IntakeStatus == global::MyDocuMgm.Domain.IntakeStatus.CONTENT_READY)
+        {
+            return;
+        }
+
+        IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.MANUAL_INPUT_REQUIRED;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SaveManualBody(string body)
+    {
+        if (IntakeStatus is null)
+        {
+            throw new DomainRuleException("URL_INTAKE_NOT_FOUND", "URL 접수 상태가 없습니다.");
+        }
+
+        var trimmedBody = body?.Trim() ?? string.Empty;
+        if (trimmedBody.Length == 0)
+        {
+            throw new DomainRuleException("MANUAL_BODY_REQUIRED", "본문을 입력해 주세요.");
+        }
+
+        if (trimmedBody.Length > ManualBodyMaxLength)
+        {
+            throw new DomainRuleException(
+                "MANUAL_BODY_TOO_LONG",
+                $"본문은 {ManualBodyMaxLength:N0}자 이하여야 합니다.");
+        }
+
+        DetailContent = trimmedBody;
+        IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.CONTENT_READY;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -165,6 +234,15 @@ public sealed class ContentTag
     public Tag Tag { get; set; } = null!;
 }
 
+public sealed class ContentMediaLink
+{
+    public Guid ContentId { get; set; }
+    public Guid MediaAssetId { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public Content Content { get; set; } = null!;
+    public MediaAsset MediaAsset { get; set; } = null!;
+}
+
 public sealed class MediaAsset
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -190,6 +268,7 @@ public sealed class MediaAsset
     public byte[] RowVersion { get; set; } = [];
     public Content Content { get; set; } = null!;
     public ICollection<ContentStep> ContentSteps { get; set; } = [];
+    public ICollection<ContentMediaLink> LinkedContents { get; set; } = [];
 
     public void MarkReady() => StorageStatus = MediaStorageStatus.READY;
 

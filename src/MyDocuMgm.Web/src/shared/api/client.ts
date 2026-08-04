@@ -8,8 +8,10 @@ import type {
   MediaPage,
   MediaSort,
   MediaUploadResult,
+  LinkableMediaPage,
   SearchAttribute,
   SearchQuery,
+  UrlIntake,
 } from '../types'
 import { cloneValue } from '../utils/clone'
 import { resolveWorkflowStep } from '../presentation/labels'
@@ -137,6 +139,53 @@ let media: import('../types').MediaItem[] = Array.from({ length: 137 }, (_, inde
   rowVersion,
 }))
 
+const demoIntake: UrlIntake = {
+  id: mockContentId,
+  originalUrl: 'https://example.com/recipe/shrimp-toast',
+  normalizedUrl: 'https://example.com/recipe/shrimp-toast',
+  sourceKind: 'GENERIC',
+  status: 'URL_ACCEPTED',
+  isDuplicate: false,
+  manualBody: null,
+  manualBodyPresent: false,
+  linkedMediaIds: [],
+}
+const urlIntakes = new Map<string, UrlIntake>([[mockContentId, demoIntake]])
+
+function normalizeMockUrl(input: string): Pick<UrlIntake, 'originalUrl' | 'normalizedUrl' | 'sourceKind'> {
+  const originalUrl = input.trim()
+  if (!originalUrl) throw new ApiError('URL_REQUIRED', 'URL을 입력해 주세요.')
+  let parsed: URL
+  try {
+    parsed = new URL(originalUrl)
+  } catch {
+    throw new ApiError('URL_INVALID', 'absolute http 또는 https URL을 입력해 주세요.')
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new ApiError('URL_SCHEME_NOT_ALLOWED', 'http 또는 https URL만 입력할 수 있습니다.')
+  }
+  if (parsed.username || parsed.password) {
+    throw new ApiError('URL_USER_INFO_NOT_ALLOWED', '사용자 정보가 포함된 URL은 입력할 수 없습니다.')
+  }
+  const instagramHosts = new Set(['instagram.com', 'www.instagram.com', 'm.instagram.com'])
+  if (instagramHosts.has(parsed.hostname.toLowerCase())) {
+    if (parsed.port) {
+      throw new ApiError('INSTAGRAM_URL_NOT_SUPPORTED', '기본 포트를 사용하는 Instagram 콘텐츠 URL만 지원합니다.')
+    }
+    const match = parsed.pathname.match(/^\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?$/i)
+    if (!match) {
+      throw new ApiError('INSTAGRAM_URL_NOT_SUPPORTED', 'Instagram 게시물, 릴스 또는 TV 콘텐츠 URL만 지원합니다.')
+    }
+    return {
+      originalUrl,
+      normalizedUrl: `https://www.instagram.com/${match[1].toLowerCase()}/${match[2]}/`,
+      sourceKind: 'INSTAGRAM',
+    }
+  }
+  parsed.hash = ''
+  return { originalUrl, normalizedUrl: parsed.toString(), sourceKind: 'GENERIC' }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -157,6 +206,107 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  async createUrlIntake(url: string): Promise<UrlIntake> {
+    if (!mockEnabled) return request('/api/url-intakes', { method: 'POST', body: JSON.stringify({ url }) })
+    const normalized = normalizeMockUrl(url)
+    const duplicate = [...urlIntakes.values()].find(item => item.normalizedUrl === normalized.normalizedUrl)
+    if (duplicate) return { ...cloneValue(duplicate), isDuplicate: true }
+    const id = globalThis.crypto.randomUUID()
+    const intake: UrlIntake = {
+      id,
+      ...normalized,
+      status: 'URL_ACCEPTED',
+      isDuplicate: false,
+      manualBody: null,
+      manualBodyPresent: false,
+      linkedMediaIds: [],
+    }
+    urlIntakes.set(id, intake)
+    const other = categories.find(category => category.code === 'OTHER')!
+    contents.push({
+      id,
+      categoryId: other.id,
+      categoryCode: other.code,
+      categoryDisplayName: other.displayName,
+      title: `URL 접수 · ${new URL(normalized.normalizedUrl).hostname}`,
+      shortSummary: null,
+      detailContent: null,
+      status: 'INBOX',
+      visibility: 'PRIVATE',
+      isFavorite: false,
+      experienceStatus: 'NONE',
+      currentWorkflowStep: 'URL',
+      blogDraftStatus: '미작성',
+      updatedAtUtc: new Date().toISOString(),
+      createdAtUtc: new Date().toISOString(),
+      rowVersion,
+      tags: [],
+    })
+    return cloneValue(intake)
+  },
+  async urlIntake(contentId: string): Promise<UrlIntake> {
+    if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}`)
+    const intake = urlIntakes.get(contentId)
+    if (!intake) throw new ApiError('URL_INTAKE_NOT_FOUND', '이 콘텐츠에는 URL 접수 정보가 없습니다.')
+    return cloneValue(intake)
+  },
+  async beginManualInput(contentId: string): Promise<UrlIntake> {
+    if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}/manual-input`, { method: 'POST' })
+    const intake = await this.urlIntake(contentId)
+    intake.status = intake.status === 'CONTENT_READY' ? 'CONTENT_READY' : 'MANUAL_INPUT_REQUIRED'
+    urlIntakes.set(contentId, intake)
+    return cloneValue(intake)
+  },
+  async saveManualBody(contentId: string, body: string): Promise<UrlIntake> {
+    if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}/manual-body`, {
+      method: 'PUT', body: JSON.stringify({ body }),
+    })
+    if (!body.trim()) throw new ApiError('MANUAL_BODY_REQUIRED', '본문을 입력해 주세요.')
+    if (body.trim().length > 20_000) throw new ApiError('MANUAL_BODY_TOO_LONG', '본문은 20,000자 이하여야 합니다.')
+    const intake = await this.urlIntake(contentId)
+    intake.manualBody = body.trim()
+    intake.manualBodyPresent = true
+    intake.status = 'CONTENT_READY'
+    urlIntakes.set(contentId, intake)
+    return cloneValue(intake)
+  },
+  async linkableMedia(page = 1, pageSize = 24): Promise<LinkableMediaPage> {
+    if (!mockEnabled) return request(`/api/url-intakes/media-library?page=${page}&pageSize=${pageSize}`)
+    const start = (page - 1) * pageSize
+    const available = media.filter(item => !item.isDeleted && item.storageStatus === 'READY')
+    const items = available
+      .slice(start, start + pageSize)
+      .map(item => ({
+        id: item.id,
+        ownerContentId: mockContentId,
+        originalFileName: item.originalFileName,
+        thumbnailUrl: item.thumbnailUrl,
+        mimeType: item.mimeType,
+        sizeBytes: item.sizeBytes,
+        width: item.width,
+        height: item.height,
+      }))
+    return {
+      items: cloneValue(items),
+      totalCount: available.length,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(available.length / pageSize)),
+    }
+  },
+  async replaceLinkedMedia(contentId: string, mediaIds: string[]): Promise<UrlIntake> {
+    if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}/media-links`, {
+      method: 'PUT', body: JSON.stringify({ mediaIds }),
+    })
+    if (mediaIds.some(id => !media.some(item =>
+      item.id === id && !item.isDeleted && item.storageStatus === 'READY'))) {
+      throw new ApiError('MEDIA_LINK_NOT_FOUND', '연결할 수 없는 이미지가 포함되어 있습니다.')
+    }
+    const intake = await this.urlIntake(contentId)
+    intake.linkedMediaIds = [...new Set(mediaIds)]
+    urlIntakes.set(contentId, intake)
+    return cloneValue(intake)
+  },
   async categories(): Promise<Category[]> {
     return mockEnabled ? cloneValue(categories) : request('/api/categories')
   },

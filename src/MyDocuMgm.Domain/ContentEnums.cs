@@ -41,6 +41,19 @@ public enum WorkflowStep
     COMPLETED
 }
 
+public enum ContentSourceKind
+{
+    GENERIC,
+    INSTAGRAM
+}
+
+public enum IntakeStatus
+{
+    URL_ACCEPTED,
+    MANUAL_INPUT_REQUIRED,
+    CONTENT_READY
+}
+
 public static class WorkflowStepRules
 {
     private static readonly WorkflowStep[] OrderedSteps = Enum.GetValues<WorkflowStep>();
