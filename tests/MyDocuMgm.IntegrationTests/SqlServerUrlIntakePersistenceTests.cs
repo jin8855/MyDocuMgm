@@ -5,21 +5,33 @@ using Microsoft.EntityFrameworkCore;
 using MyDocuMgm.Application.UrlIntake;
 using MyDocuMgm.Domain;
 using MyDocuMgm.Infrastructure.Data;
-using Xunit.Sdk;
 
 namespace MyDocuMgm.IntegrationTests;
 
+internal sealed class Phase2ASqlUatFactAttribute : FactAttribute
+{
+    internal const string ConnectionVariable = "MYDOCUMGM_PHASE2A_SQL_UAT";
+
+    public Phase2ASqlUatFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionVariable)))
+        {
+            Skip = $"Set {ConnectionVariable} to an approved disposable SQL Server database.";
+        }
+    }
+}
+
 public sealed class SqlServerUrlIntakePersistenceTests
 {
-    private const string ConnectionVariable = "MYDOCUMGM_PHASE2A_SQL_UAT";
+    private const string ConnectionVariable = Phase2ASqlUatFactAttribute.ConnectionVariable;
 
-    [Fact]
+    [Phase2ASqlUatFact]
     public async Task DisposableSqlServer_EnforcesConcurrentDuplicateAndUnlinkPreservesMediaAndFile()
     {
         var targetConnection = Environment.GetEnvironmentVariable(ConnectionVariable);
         if (string.IsNullOrWhiteSpace(targetConnection))
         {
-            throw SkipException.ForSkip($"Set {ConnectionVariable} to an approved disposable SQL Server database.");
+            throw new InvalidOperationException($"{ConnectionVariable} was not available during SQL UAT execution.");
         }
 
         var target = new SqlConnectionStringBuilder(targetConnection);
@@ -27,7 +39,7 @@ public sealed class SqlServerUrlIntakePersistenceTests
             !target.IntegratedSecurity ||
             !string.IsNullOrEmpty(target.UserID) ||
             !string.IsNullOrEmpty(target.Password) ||
-            !Regex.IsMatch(target.InitialCatalog, "^MyDocuMgmPhase2A_[A-Za-z0-9_]+$"))
+            !Regex.IsMatch(target.InitialCatalog, "^MyDocuMgmPhase2A_Validation_[A-Za-z0-9_]+$"))
         {
             throw new InvalidOperationException("Phase 2A disposable SQL Server target is not approved or safe.");
         }
