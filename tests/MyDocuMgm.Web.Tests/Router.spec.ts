@@ -5,6 +5,7 @@ describe('router', () => {
     expect(routes.map((route) => route.path)).toEqual([
       '/',
       '/contents',
+      '/cleanup',
       '/categories',
       '/mobile',
       '/workflow/:id/:step',

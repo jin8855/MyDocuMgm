@@ -236,6 +236,62 @@ public interface IMediaStorageReadiness
     Task<MediaStorageReadiness> CheckReadinessAsync(CancellationToken cancellationToken);
 }
 
+public sealed record TrashContentItem(
+    Guid Id,
+    string Title,
+    DateTime? DeletedAtUtc,
+    int OwnedMediaCount,
+    string RowVersion);
+
+public sealed record OrphanMediaItem(
+    Guid Id,
+    Guid ContentId,
+    string OriginalFileName,
+    int LinkCount,
+    bool FileExists,
+    string FileState,
+    string RowVersion);
+
+public sealed record CleanupMediaCandidate(
+    MediaAsset Media,
+    int LinkCount,
+    int StepReferenceCount);
+
+public interface ICleanupRepository
+{
+    Task<IReadOnlyList<TrashContentItem>> ListTrashAsync(CancellationToken cancellationToken);
+    Task<Content?> FindContentAsync(Guid id, CancellationToken cancellationToken);
+    Task<int> CountOwnedMediaAsync(Guid contentId, CancellationToken cancellationToken);
+    void RemoveContent(Content content);
+    Task<IReadOnlyList<CleanupMediaCandidate>> ListOrphanMediaAsync(CancellationToken cancellationToken);
+    Task<CleanupMediaCandidate?> FindMediaAsync(Guid mediaId, CancellationToken cancellationToken);
+    Task<int> CountMediaPathReferencesAsync(string relativePath, Guid excludingMediaId, CancellationToken cancellationToken);
+    void RemoveMedia(MediaAsset media);
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}
+
+public sealed record MediaCleanupStorageState(bool Exists, bool IsSafe, string Code);
+public sealed record QuarantinedMediaFile(string OriginalRelativePath, string QuarantineRelativePath);
+public sealed record PreparedMediaCleanup(IReadOnlyList<QuarantinedMediaFile> Files, bool OriginalAlreadyAbsent);
+
+public interface IMediaCleanupStorage
+{
+    Task<MediaCleanupStorageState> InspectAsync(
+        Guid contentId,
+        Guid mediaId,
+        string relativePath,
+        string storedFileName,
+        CancellationToken cancellationToken);
+    Task<PreparedMediaCleanup> PrepareDeleteAsync(
+        Guid contentId,
+        Guid mediaId,
+        string relativePath,
+        string storedFileName,
+        CancellationToken cancellationToken);
+    Task RestoreAsync(PreparedMediaCleanup cleanup, CancellationToken cancellationToken);
+    Task CommitAsync(PreparedMediaCleanup cleanup, CancellationToken cancellationToken);
+}
+
 public sealed class MediaOperationException : Exception
 {
     public MediaOperationException(string code, string message) : base(message)
@@ -248,3 +304,8 @@ public sealed class MediaOperationException : Exception
 
 public sealed class ConcurrencyConflictException(string message) : InvalidOperationException(message);
 public sealed class NotFoundException(string message) : InvalidOperationException(message);
+
+public sealed class CleanupConflictException(string code, string message) : InvalidOperationException(message)
+{
+    public string Code { get; } = code;
+}

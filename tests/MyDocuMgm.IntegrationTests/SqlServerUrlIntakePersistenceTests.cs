@@ -2,9 +2,12 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MyDocuMgm.Application;
 using MyDocuMgm.Application.UrlIntake;
 using MyDocuMgm.Domain;
 using MyDocuMgm.Infrastructure.Data;
+using MyDocuMgm.Infrastructure.Storage;
 
 namespace MyDocuMgm.IntegrationTests;
 
@@ -156,6 +159,122 @@ public sealed class SqlServerUrlIntakePersistenceTests
                 throw new AggregateException("Phase 2A disposable test cleanup failed.", cleanupErrors);
             }
         }
+    }
+
+    [Phase2ASqlUatFact]
+    public async Task DisposableSqlServer_DeletesOrphanMediaBeforeSoftDeletedOwner()
+    {
+        var targetConnection = RequireApprovedTarget();
+        var target = new SqlConnectionStringBuilder(targetConnection);
+        var databaseName = target.InitialCatalog;
+        var master = new SqlConnectionStringBuilder(targetConnection) { InitialCatalog = "master" };
+        var mediaRoot = Path.Combine(Path.GetTempPath(), $"MyDocuMgm-cleanup-sql-media-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(mediaRoot);
+        try
+        {
+            await EnsureDatabaseMissingAsync(master.ConnectionString, databaseName);
+            await CreateDatabaseAsync(master.ConnectionString, databaseName);
+            var options = new DbContextOptionsBuilder<MyDocuMgmDbContext>()
+                .UseSqlServer(target.ConnectionString)
+                .Options;
+            await using (var migrationContext = new MyDocuMgmDbContext(options))
+            {
+                await migrationContext.Database.MigrateAsync();
+            }
+
+            var content = new Content
+            {
+                CategoryId = CategoryCatalog.All.Single(category => category.Code == "OTHER").Id,
+                Title = "Synthetic cleanup owner"
+            };
+            content.SoftDelete();
+            var mediaId = Guid.NewGuid();
+            var storedFileName = $"{mediaId:N}.png";
+            var relativePath = $"media/{content.Id:N}/{mediaId:N}/original/{storedFileName}";
+            var fullPath = Path.Combine(mediaRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            await File.WriteAllBytesAsync(fullPath, [1, 2, 3, 4]);
+            await using (var seedContext = new MyDocuMgmDbContext(options))
+            {
+                seedContext.Add(content);
+                seedContext.Add(new MediaAsset
+                {
+                    Id = mediaId,
+                    ContentId = content.Id,
+                    OriginalFileName = "synthetic.png",
+                    StoredFileName = storedFileName,
+                    RelativePath = relativePath,
+                    MimeType = "image/png",
+                    SizeBytes = 4,
+                    Sha256 = new string('A', 64),
+                    Width = 1,
+                    Height = 1,
+                    StorageStatus = MediaStorageStatus.READY
+                });
+                await seedContext.SaveChangesAsync();
+            }
+
+            var storage = new LocalMediaStorage(Options.Create(new StorageOptions { RootPath = mediaRoot }));
+            await using (var mediaContext = new MyDocuMgmDbContext(options))
+            {
+                var service = new CleanupService(
+                    new EfCleanupRepository(mediaContext),
+                    storage,
+                    new NoopDiagnostics());
+                await service.PermanentlyDeleteOrphanMediaAsync(mediaId, default);
+            }
+
+            Assert.False(File.Exists(fullPath));
+            await using (var contentContext = new MyDocuMgmDbContext(options))
+            {
+                Assert.Equal(0, await contentContext.MediaAssets.IgnoreQueryFilters().CountAsync());
+                Assert.Equal(1, await contentContext.Contents.IgnoreQueryFilters().CountAsync());
+                var service = new CleanupService(
+                    new EfCleanupRepository(contentContext),
+                    storage,
+                    new NoopDiagnostics());
+                await service.PermanentlyDeleteContentAsync(content.Id, default);
+            }
+
+            await using (var finalContext = new MyDocuMgmDbContext(options))
+            {
+                Assert.Equal(0, await finalContext.MediaAssets.IgnoreQueryFilters().CountAsync());
+                Assert.Equal(0, await finalContext.Contents.IgnoreQueryFilters().CountAsync());
+                Assert.Equal(0, await finalContext.ContentMediaLinks.CountAsync());
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(mediaRoot)) Directory.Delete(mediaRoot, recursive: true);
+            SqlConnection.ClearAllPools();
+            await DropDatabaseIfExistsAsync(master.ConnectionString, databaseName);
+        }
+    }
+
+    private static string RequireApprovedTarget()
+    {
+        var targetConnection = Environment.GetEnvironmentVariable(ConnectionVariable);
+        if (string.IsNullOrWhiteSpace(targetConnection))
+        {
+            throw new InvalidOperationException($"{ConnectionVariable} was not available during SQL UAT execution.");
+        }
+
+        var target = new SqlConnectionStringBuilder(targetConnection);
+        if (!string.Equals(target.DataSource, @"localhost\MSSQLSERVER01", StringComparison.OrdinalIgnoreCase) ||
+            !target.IntegratedSecurity ||
+            !string.IsNullOrEmpty(target.UserID) ||
+            !string.IsNullOrEmpty(target.Password) ||
+            !Regex.IsMatch(target.InitialCatalog, "^MyDocuMgmPhase2A_Validation_[A-Za-z0-9_]+$"))
+        {
+            throw new InvalidOperationException("Phase 2A disposable SQL Server target is not approved or safe.");
+        }
+
+        return targetConnection;
+    }
+
+    private sealed class NoopDiagnostics : IMediaDiagnostics
+    {
+        public void Record(string code, Guid? contentId, Guid? mediaId = null) { }
     }
 
     private static async Task<UrlIntakeDto> IntakeAsync(

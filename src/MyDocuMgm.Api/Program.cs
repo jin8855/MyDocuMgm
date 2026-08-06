@@ -28,6 +28,7 @@ app.UseExceptionHandler(errorApp =>
             MediaOperationException media => (MediaStatus(media.Code), media.Message, media.Code),
             NotFoundException => (StatusCodes.Status404NotFound, "대상을 찾을 수 없습니다.", "NOT_FOUND"),
             ConcurrencyConflictException => (StatusCodes.Status409Conflict, "동시 수정 충돌", "CONCURRENCY_CONFLICT"),
+            CleanupConflictException cleanup => (StatusCodes.Status409Conflict, cleanup.Message, cleanup.Code),
             DomainRuleException domain => (StatusCodes.Status400BadRequest, domain.Message, domain.Code),
             InvalidDataException invalid => (StatusCodes.Status400BadRequest, invalid.Message, "INVALID_MEDIA"),
             _ => (StatusCodes.Status500InternalServerError, "요청을 처리하지 못했습니다.", "UNEXPECTED_ERROR")
@@ -86,7 +87,11 @@ static int MediaStatus(string code) => code switch
         "MEDIA_STORAGE_DELETE_FAILED" or
         "MEDIA_PROMOTION_FAILED" or
         "MEDIA_THUMBNAIL_GENERATION_FAILED" or
-        "MEDIA_PERSISTENCE_FAILED" => StatusCodes.Status503ServiceUnavailable,
+        "MEDIA_PERSISTENCE_FAILED" or
+        "MEDIA_CLEANUP_PREPARE_FAILED" or
+        "MEDIA_CLEANUP_PREPARE_RESTORE_FAILED" or
+        "MEDIA_CLEANUP_RESTORE_FAILED" or
+        "MEDIA_CLEANUP_FINALIZE_FAILED" => StatusCodes.Status503ServiceUnavailable,
     _ => StatusCodes.Status400BadRequest
 };
 

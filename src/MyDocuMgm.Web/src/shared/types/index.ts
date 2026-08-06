@@ -146,3 +146,21 @@ export interface LinkableMediaPage {
   pageSize: number
   totalPages: number
 }
+
+export interface TrashContentItem {
+  id: string
+  title: string
+  deletedAtUtc: string | null
+  ownedMediaCount: number
+  rowVersion: string
+}
+
+export interface OrphanMediaItem {
+  id: string
+  contentId: string
+  originalFileName: string
+  linkCount: number
+  fileExists: boolean
+  fileState: string
+  rowVersion: string
+}

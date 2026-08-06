@@ -9,9 +9,11 @@ import type {
   MediaSort,
   MediaUploadResult,
   LinkableMediaPage,
+  OrphanMediaItem,
   SearchAttribute,
   SearchQuery,
   UrlIntake,
+  TrashContentItem,
 } from '../types'
 import { cloneValue } from '../utils/clone'
 import { resolveWorkflowStep } from '../presentation/labels'
@@ -118,6 +120,7 @@ let contents: ContentItem[] = Array.from({ length: 31 }, (_, index) => {
     tags: index === 0 ? ['새우', '간단요리', '간식'] : [category.displayName, '생활팁'],
   }
 })
+const deletedContentIds = new Set<string>()
 
 let media: import('../types').MediaItem[] = Array.from({ length: 137 }, (_, index) => ({
   id: `media-${index + 1}`,
@@ -334,7 +337,7 @@ export const api = {
       const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))
       return request(`/api/contents?${params}`)
     }
-    let result = [...contents]
+    let result = contents.filter(item => !deletedContentIds.has(item.id))
     if (query.majorCategory) result = result.filter((item) => item.categoryCode === query.majorCategory)
     if (query.status) result = result.filter((item) => item.status === query.status)
     if (query.workflowStep !== '') {
@@ -368,6 +371,51 @@ export const api = {
       return cloneValue(item)
     }
     return request(contentPath(id))
+  },
+  async softDeleteContent(id: string, currentRowVersion: string): Promise<void> {
+    if (mockEnabled) {
+      if (!contents.some(item => item.id === id)) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+      deletedContentIds.add(id)
+      return
+    }
+    return request(`${contentPath(id)}?rowVersion=${encodeURIComponent(currentRowVersion)}`, { method: 'DELETE' })
+  },
+  async trash(): Promise<TrashContentItem[]> {
+    if (!mockEnabled) return request('/api/cleanup/trash')
+    return contents.filter(item => deletedContentIds.has(item.id)).map(item => ({
+      id: item.id,
+      title: item.title,
+      deletedAtUtc: new Date().toISOString(),
+      ownedMediaCount: item.id === mockContentId ? media.length : 0,
+      rowVersion: item.rowVersion,
+    }))
+  },
+  async permanentlyDeleteContent(id: string): Promise<void> {
+    if (!mockEnabled) return request(`/api/cleanup/trash/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!deletedContentIds.has(id)) throw new ApiError('CONTENT_NOT_SOFT_DELETED', '휴지통 콘텐츠만 영구 삭제할 수 있습니다.')
+    if (id === mockContentId && media.length > 0) throw new ApiError('CONTENT_HAS_OWNED_MEDIA', '소유 미디어를 먼저 삭제해 주세요.')
+    contents = contents.filter(item => item.id !== id)
+    deletedContentIds.delete(id)
+  },
+  async orphanMedia(): Promise<OrphanMediaItem[]> {
+    if (!mockEnabled) return request('/api/cleanup/orphan-media')
+    const linked = new Set([...urlIntakes.values()].flatMap(item => item.linkedMediaIds))
+    return media.filter(item => !linked.has(item.id)).map(item => ({
+      id: item.id,
+      contentId: mockContentId,
+      originalFileName: item.originalFileName,
+      linkCount: 0,
+      fileExists: true,
+      fileState: 'MEDIA_FILE_READY_FOR_CLEANUP',
+      rowVersion: item.rowVersion,
+    }))
+  },
+  async permanentlyDeleteOrphanMedia(id: string): Promise<void> {
+    if (!mockEnabled) return request(`/api/cleanup/orphan-media/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if ([...urlIntakes.values()].some(item => item.linkedMediaIds.includes(id))) {
+      throw new ApiError('MEDIA_STILL_REFERENCED', '연결된 미디어는 삭제할 수 없습니다.')
+    }
+    media = media.filter(item => item.id !== id)
   },
   async ingredients(contentId: string): Promise<CookingIngredient[]> {
     if (mockEnabled) return contentId === mockContentId ? cloneValue(ingredients) : []

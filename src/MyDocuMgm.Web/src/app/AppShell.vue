@@ -6,6 +6,7 @@ const router = useRouter()
 const navigation = [
   { to: '/', label: '작업보드', icon: '▦' },
   { to: '/contents', label: '작업목록', icon: '☷' },
+  { to: '/cleanup', label: '휴지통·미디어 정리', icon: '♲' },
   { to: '/categories', label: '분류 관리', icon: '⌘' },
   { to: '/mobile', label: '모바일 읽기', icon: '▯' },
 ]

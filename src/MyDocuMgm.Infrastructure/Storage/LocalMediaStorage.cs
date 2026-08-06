@@ -12,8 +12,9 @@ namespace MyDocuMgm.Infrastructure.Storage;
 
 public sealed class LocalMediaStorage(
     IOptions<StorageOptions> options,
-    IMediaDiagnostics? diagnostics = null) : IMediaStorage, IMediaStorageReadiness
+    IMediaDiagnostics? diagnostics = null) : IMediaStorage, IMediaStorageReadiness, IMediaCleanupStorage
 {
+    internal IMediaCleanupFaultInjector CleanupFaultInjector { get; init; } = NoopMediaCleanupFaultInjector.Instance;
     private const long ApprovedMaxFileBytes = 20_971_520;
     private const int ApprovedMaxPixelWidth = 8192;
     private const int ApprovedMaxPixelHeight = 8192;
@@ -192,6 +193,166 @@ public sealed class LocalMediaStorage(
         var root = EnsureReadyRoot(_options.RootPath);
         DeleteFileIfPresent(ResolveUnderRoot(root, relativePath));
         return Task.CompletedTask;
+    }
+
+    public Task<MediaCleanupStorageState> InspectAsync(
+        Guid contentId,
+        Guid mediaId,
+        string relativePath,
+        string storedFileName,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            var (_, path) = ResolveCleanupTarget(contentId, mediaId, relativePath, storedFileName);
+            if (!File.Exists(path))
+            {
+                return Task.FromResult(new MediaCleanupStorageState(false, true, "MEDIA_FILE_ALREADY_ABSENT"));
+            }
+
+            RejectFileReparsePoint(path);
+            return Task.FromResult(new MediaCleanupStorageState(true, true, "MEDIA_FILE_READY_FOR_CLEANUP"));
+        }
+        catch (MediaOperationException exception)
+        {
+            return Task.FromResult(new MediaCleanupStorageState(false, false, exception.Code));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Task.FromResult(new MediaCleanupStorageState(false, false, "MEDIA_STORAGE_READ_FAILED"));
+        }
+    }
+
+    public Task<PreparedMediaCleanup> PrepareDeleteAsync(
+        Guid contentId,
+        Guid mediaId,
+        string relativePath,
+        string storedFileName,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var (root, originalPath) = ResolveCleanupTarget(contentId, mediaId, relativePath, storedFileName);
+        var originalAbsent = !File.Exists(originalPath);
+        var sourcePaths = new List<string>();
+        if (!originalAbsent)
+        {
+            RejectFileReparsePoint(originalPath);
+            sourcePaths.Add(originalPath);
+        }
+
+        var thumbnailDirectory = ResolveUnderRoot(root, $"derived/thumbnails/{mediaId:N}");
+        if (Directory.Exists(thumbnailDirectory))
+        {
+            sourcePaths.AddRange(EnumerateFilesSafely(root, thumbnailDirectory));
+        }
+
+        var quarantineRootRelative = $"temp/cleanup/{Guid.NewGuid():N}";
+        var moved = new List<QuarantinedMediaFile>(sourcePaths.Count);
+        try
+        {
+            for (var index = 0; index < sourcePaths.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var sourcePath = sourcePaths[index];
+                var sourceRelative = NormalizeRelative(Path.GetRelativePath(root, sourcePath));
+                var quarantineRelative = $"{quarantineRootRelative}/{index:D4}-{Path.GetFileName(sourcePath)}";
+                var quarantinePath = ResolveUnderRoot(root, quarantineRelative);
+                EnsureSafeDirectory(root, Path.GetDirectoryName(quarantinePath)!);
+                CleanupFaultInjector.BeforeMove(restoring: false, index, sourcePath, quarantinePath);
+                File.Move(sourcePath, quarantinePath, overwrite: false);
+                moved.Add(new QuarantinedMediaFile(sourceRelative, quarantineRelative));
+            }
+
+            return Task.FromResult(new PreparedMediaCleanup(moved, originalAbsent));
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                RestoreMovedFiles(root, moved);
+            }
+            catch (Exception restoreException)
+            {
+                diagnostics?.Record("MEDIA_CLEANUP_PREPARE_RESTORE_FAILED", null, mediaId);
+                throw new MediaOperationException(
+                    "MEDIA_CLEANUP_PREPARE_RESTORE_FAILED",
+                    $"삭제 준비 실패 후 이동한 파일의 복원에도 실패했습니다: {restoreException.GetType().Name}");
+            }
+
+            if (exception is MediaOperationException)
+            {
+                throw;
+            }
+
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_PREPARE_FAILED",
+                "미디어 파일을 안전한 삭제 대기 위치로 옮기지 못했습니다.");
+        }
+    }
+
+    public Task RestoreAsync(PreparedMediaCleanup cleanup, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var root = EnsureReadyRoot(_options.RootPath);
+        try
+        {
+            RestoreMovedFiles(root, cleanup.Files.Reverse());
+            return Task.CompletedTask;
+        }
+        catch (MediaOperationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_RESTORE_FAILED",
+                "DB 삭제 실패 후 미디어 파일을 원래 위치로 복원하지 못했습니다.");
+        }
+    }
+
+    public Task CommitAsync(PreparedMediaCleanup cleanup, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var root = EnsureReadyRoot(_options.RootPath);
+        try
+        {
+            var fileIndex = 0;
+            foreach (var file in cleanup.Files)
+            {
+                var quarantinePath = ResolveUnderRoot(root, file.QuarantineRelativePath);
+                RejectReparsePoints(root, Path.GetDirectoryName(quarantinePath)!);
+                RejectFileReparsePoint(quarantinePath);
+                CleanupFaultInjector.BeforeDelete(fileIndex, quarantinePath);
+                DeleteFileIfPresent(quarantinePath);
+                fileIndex++;
+            }
+
+            foreach (var directory in cleanup.Files
+                         .Select(file => Path.GetDirectoryName(ResolveUnderRoot(root, file.QuarantineRelativePath)))
+                         .Where(directory => directory is not null)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    RejectReparsePoints(root, directory);
+                    Directory.Delete(directory);
+                }
+            }
+
+            return Task.CompletedTask;
+        }
+        catch (MediaOperationException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_FINALIZE_FAILED",
+                "격리한 미디어 파일을 최종 삭제하지 못했습니다.");
+        }
     }
 
     public Task<MediaBinary> OpenOriginalAsync(
@@ -552,6 +713,83 @@ public sealed class LocalMediaStorage(
         }
 
         return candidate;
+    }
+
+    private (string Root, string Path) ResolveCleanupTarget(
+        Guid contentId,
+        Guid mediaId,
+        string relativePath,
+        string storedFileName)
+    {
+        if (string.IsNullOrWhiteSpace(storedFileName) ||
+            !string.Equals(Path.GetFileName(storedFileName), storedFileName, StringComparison.Ordinal) ||
+            IsReservedDeviceName(storedFileName))
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_IDENTITY_INVALID",
+                "미디어 파일 식별 정보가 안전하지 않아 삭제할 수 없습니다.");
+        }
+
+        var root = EnsureReadyRoot(_options.RootPath);
+        var expectedRelativePath = $"media/{contentId:N}/{mediaId:N}/original/{storedFileName}";
+        if (!string.Equals(
+                NormalizeRelative(relativePath),
+                expectedRelativePath,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_IDENTITY_INVALID",
+                "DB의 미디어 소유권과 삭제 대상 경로가 일치하지 않습니다.");
+        }
+
+        var path = ResolveUnderRoot(root, relativePath);
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        if (!string.Equals(Path.GetFileName(path), storedFileName, comparison))
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_IDENTITY_INVALID",
+                "DB의 저장 파일명과 삭제 대상 파일명이 일치하지 않습니다.");
+        }
+
+        RejectReparsePoints(root, Path.GetDirectoryName(path)!);
+        if (Directory.Exists(path))
+        {
+            throw new MediaOperationException(
+                "MEDIA_CLEANUP_TARGET_INVALID",
+                "미디어 삭제 대상이 단일 파일이 아닙니다.");
+        }
+
+        return (root, path);
+    }
+
+    private void RestoreMovedFiles(string root, IEnumerable<QuarantinedMediaFile> files)
+    {
+        var index = 0;
+        foreach (var file in files)
+        {
+            var quarantinePath = ResolveUnderRoot(root, file.QuarantineRelativePath);
+            var originalPath = ResolveUnderRoot(root, file.OriginalRelativePath);
+            RejectReparsePoints(root, Path.GetDirectoryName(quarantinePath)!);
+            if (!File.Exists(quarantinePath))
+            {
+                continue;
+            }
+
+            RejectFileReparsePoint(quarantinePath);
+            if (File.Exists(originalPath) || Directory.Exists(originalPath))
+            {
+                throw new MediaOperationException(
+                    "MEDIA_CLEANUP_RESTORE_CONFLICT",
+                    "복원 대상 위치에 다른 파일 또는 폴더가 있어 복원할 수 없습니다.");
+            }
+
+            EnsureSafeDirectory(root, Path.GetDirectoryName(originalPath)!);
+            CleanupFaultInjector.BeforeMove(restoring: true, index, quarantinePath, originalPath);
+            File.Move(quarantinePath, originalPath, overwrite: false);
+            index++;
+        }
     }
 
     private AllowedFormat ValidateSourceNameAndMime(string originalFileName, string declaredMimeType)
@@ -985,4 +1223,28 @@ public sealed class LocalMediaStorage(
         string ImageSharpName,
         string MimeType,
         string CanonicalExtension);
+}
+
+internal interface IMediaCleanupFaultInjector
+{
+    void BeforeMove(bool restoring, int index, string sourcePath, string destinationPath);
+
+    void BeforeDelete(int index, string path);
+}
+
+internal sealed class NoopMediaCleanupFaultInjector : IMediaCleanupFaultInjector
+{
+    internal static NoopMediaCleanupFaultInjector Instance { get; } = new();
+
+    private NoopMediaCleanupFaultInjector()
+    {
+    }
+
+    public void BeforeMove(bool restoring, int index, string sourcePath, string destinationPath)
+    {
+    }
+
+    public void BeforeDelete(int index, string path)
+    {
+    }
 }

@@ -52,8 +52,10 @@ public static class DependencyInjection
         services.AddScoped<ICookingIngredientRepository, EfCookingIngredientRepository>();
         services.AddScoped<ICategoryManagementRepository, EfCategoryManagementRepository>();
         services.AddScoped<IUrlIntakeRepository, EfUrlIntakeRepository>();
+        services.AddScoped<ICleanupRepository, EfCleanupRepository>();
         services.AddScoped<LocalMediaStorage>();
         services.AddScoped<IMediaStorage>(provider => provider.GetRequiredService<LocalMediaStorage>());
+        services.AddScoped<IMediaCleanupStorage>(provider => provider.GetRequiredService<LocalMediaStorage>());
         services.AddScoped<IMediaStorageReadiness>(provider => provider.GetRequiredService<LocalMediaStorage>());
         services.AddScoped<IMediaDiagnostics, MediaDiagnostics>();
         services.AddScoped<ContentService>();
@@ -62,6 +64,7 @@ public static class DependencyInjection
         services.AddScoped<CategoryManagementService>();
         services.AddScoped<UpdateWorkflowStepService>();
         services.AddScoped<UrlIntakeService>();
+        services.AddScoped<CleanupService>();
         return services;
     }
 }

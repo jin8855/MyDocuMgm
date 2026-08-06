@@ -6,6 +6,7 @@ import ErrorStatePage from '../pages/ErrorStatePage.vue'
 import MobileReadingPage from '../pages/MobileReadingPage.vue'
 import WorkflowPage from '../pages/WorkflowPage.vue'
 import WorkListPage from '../pages/WorkListPage.vue'
+import CleanupPage from '../pages/CleanupPage.vue'
 
 const newWorkIdPrefix = 'new-'
 
@@ -20,6 +21,7 @@ export function isNewWorkId(id: string): boolean {
 export const routes: RouteRecordRaw[] = [
   { path: '/', component: DashboardPage },
   { path: '/contents', component: WorkListPage },
+  { path: '/cleanup', component: CleanupPage },
   { path: '/categories', component: CategoryManagementPage },
   { path: '/mobile', component: MobileReadingPage },
   { path: '/workflow/:id/:step', component: WorkflowPage, props: true },

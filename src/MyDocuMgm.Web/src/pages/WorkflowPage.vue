@@ -32,6 +32,7 @@ const editingIngredient = ref<CookingIngredient>()
 const dirty = ref(false)
 const showUnsaved = ref(false)
 const showDelete = ref(false)
+const deletingContent = ref(false)
 const pendingAction = ref<null | (() => void)>(null)
 const mediaState = useMediaState(() => props.id)
 let loadGeneration = 0
@@ -63,10 +64,10 @@ async function load() {
   if (current.value === 'URL') return
 
   try {
-    const [nextContent, nextIngredients] = await Promise.all([
-      api.content(props.id),
-      api.ingredients(props.id),
-    ])
+    const nextContent = await api.content(props.id)
+    const nextIngredients = nextContent.categoryCode === 'COOKING'
+      ? await api.ingredients(props.id)
+      : []
     if (generation !== loadGeneration) return
     content.value = nextContent
     ingredients.value = nextIngredients
@@ -140,6 +141,22 @@ function markDirty() { dirty.value = true }
 function acceptUrl(contentId: string) {
   dirty.value = false
   if (contentId !== props.id) void router.replace(`/workflow/${contentId}/url`)
+}
+
+async function softDeleteContent() {
+  if (!content.value || deletingContent.value) return
+  deletingContent.value = true
+  loadError.value = ''
+  try {
+    await api.softDeleteContent(content.value.id, content.value.rowVersion)
+    showDelete.value = false
+    dirty.value = false
+    await router.push('/contents')
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : '콘텐츠를 휴지통으로 이동하지 못했습니다.'
+  } finally {
+    deletingContent.value = false
+  }
 }
 
 onBeforeRouteLeave((to) => {
@@ -286,8 +303,8 @@ watch(() => [props.id, props.step], load, { immediate: true })
     <div v-if="showDelete" class="modal-backdrop" role="presentation">
       <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
         <header><h3 id="delete-title">콘텐츠를 삭제하시겠습니까?</h3></header>
-        <p>삭제된 항목은 기본 작업목록에서 숨겨집니다. 이 화면에서는 실제 삭제를 실행하지 않습니다.</p>
-        <footer><button class="button" @click="showDelete = false">취소</button><button class="button danger" @click="showDelete = false">삭제 확인</button></footer>
+        <p>콘텐츠를 휴지통으로 이동합니다. 연결된 미디어와 파일은 삭제하지 않습니다.</p>
+        <footer><button class="button" :disabled="deletingContent" @click="showDelete = false">취소</button><button class="button danger" :disabled="deletingContent" @click="softDeleteContent">{{ deletingContent ? '이동 중…' : '휴지통으로 이동' }}</button></footer>
       </section>
     </div>
   </main>
