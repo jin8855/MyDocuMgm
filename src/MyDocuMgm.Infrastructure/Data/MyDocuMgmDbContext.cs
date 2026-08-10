@@ -8,6 +8,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<CategorySearchAttribute> CategorySearchAttributes => Set<CategorySearchAttribute>();
     public DbSet<Content> Contents => Set<Content>();
+    public DbSet<BlogDraft> BlogDrafts => Set<BlogDraft>();
     public DbSet<ContentStep> ContentSteps => Set<ContentStep>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ContentTag> ContentTags => Set<ContentTag>();
@@ -107,6 +108,18 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
             table.HasCheckConstraint(
                 "CK_Contents_IntakeStatus",
                 "[IntakeStatus] IS NULL OR [IntakeStatus] IN ('URL_ACCEPTED','MANUAL_INPUT_REQUIRED','CONTENT_READY')");
+            table.HasCheckConstraint(
+                "CK_Contents_InstagramContentType",
+                "[InstagramContentType] IS NULL OR [InstagramContentType] IN ('POST','REEL')");
+            table.HasCheckConstraint(
+                "CK_Contents_PinnedAuthorCommentState",
+                "[PinnedAuthorCommentState] IS NULL OR [PinnedAuthorCommentState] IN ('PRESENT','NONE')");
+            table.HasCheckConstraint(
+                "CK_Contents_SourceAcquisitionMode",
+                "[SourceAcquisitionMode] IS NULL OR [SourceAcquisitionMode] = 'MANUAL'");
+            table.HasCheckConstraint(
+                "CK_Contents_PinnedAuthorCommentConsistency",
+                "([PinnedAuthorCommentState] IS NULL AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'NONE' AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'PRESENT' AND LEN(LTRIM(RTRIM([PinnedAuthorCommentText]))) > 0)");
         });
         content.HasKey(value => value.Id);
         content.Property(value => value.Title).HasMaxLength(200).IsRequired();
@@ -120,6 +133,11 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.Property(value => value.NormalizedUrl).HasMaxLength(2048);
         content.Property(value => value.NormalizedUrlHash).HasColumnType("binary(32)");
         content.Property(value => value.SourceKind).HasConversion<string>().HasMaxLength(20);
+        content.Property(value => value.InstagramContentType).HasConversion<string>().HasMaxLength(20);
+        content.Property(value => value.ManualCaption).HasMaxLength(Content.ManualCaptionMaxLength);
+        content.Property(value => value.PinnedAuthorCommentState).HasConversion<string>().HasMaxLength(20);
+        content.Property(value => value.PinnedAuthorCommentText).HasMaxLength(Content.PinnedAuthorCommentMaxLength);
+        content.Property(value => value.SourceAcquisitionMode).HasConversion<string>().HasMaxLength(20);
         content.Property(value => value.IntakeStatus).HasConversion<string>().HasMaxLength(30);
         content.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.UpdatedAtUtc).HasColumnType("datetime2");
@@ -138,6 +156,20 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
 
     private static void ConfigureChildren(ModelBuilder modelBuilder)
     {
+        var blogDraft = modelBuilder.Entity<BlogDraft>();
+        blogDraft.ToTable("BlogDrafts");
+        blogDraft.HasKey(value => value.Id);
+        blogDraft.Property(value => value.Title).HasMaxLength(BlogDraft.TitleMaxLength).IsRequired();
+        blogDraft.Property(value => value.Body).HasMaxLength(BlogDraft.BodyMaxLength).IsRequired();
+        blogDraft.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
+        blogDraft.Property(value => value.UpdatedAtUtc).HasColumnType("datetime2");
+        blogDraft.Property(value => value.RowVersion).IsRowVersion();
+        blogDraft.HasIndex(value => value.ContentId).IsUnique();
+        blogDraft.HasOne(value => value.Content)
+            .WithOne(value => value.BlogDraft)
+            .HasForeignKey<BlogDraft>(value => value.ContentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         var step = modelBuilder.Entity<ContentStep>();
         step.ToTable("ContentSteps");
         step.HasKey(value => value.Id);

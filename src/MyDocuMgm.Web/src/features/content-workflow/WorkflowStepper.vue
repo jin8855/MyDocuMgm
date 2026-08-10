@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { WorkflowStep } from '../../shared/types'
 import { workflowSteps } from '../../shared/presentation/labels'
 
-const props = defineProps<{ current: WorkflowStep; showTools?: boolean }>()
+const props = withDefaults(defineProps<{ current: WorkflowStep; showTools?: boolean; showEdit?: boolean }>(), { showEdit: true })
 const emit = defineEmits<{ edit: []; delete: []; close: [] }>()
 const currentIndex = computed(() => workflowSteps.findIndex((step) => step.key === props.current))
 const stepList = ref<HTMLOListElement>()
@@ -33,7 +33,7 @@ watch(() => props.current, revealCurrentStep, { immediate: true })
       </li>
     </ol>
     <div v-if="showTools" class="workflow-tools">
-      <button class="button" @click="emit('edit')">편집</button>
+      <button v-if="showEdit" class="button" @click="emit('edit')">편집</button>
       <button class="button danger-quiet" @click="emit('delete')">삭제</button>
       <button class="button" @click="emit('close')">닫기</button>
     </div>

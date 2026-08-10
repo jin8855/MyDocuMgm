@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import LocalMediaLinkPicker from '../url-intake/LocalMediaLinkPicker.vue'
+import MediaUploadPanel from '../media-management/MediaUploadPanel.vue'
+import { useMediaState } from '../media-management/useMediaState'
 import { ApiError, api } from '../../shared/api/client'
-import type { LinkableMediaPage, UrlIntake } from '../../shared/types'
+import type { LinkableMediaPage, PinnedAuthorCommentState, UrlIntake } from '../../shared/types'
 
 const props = defineProps<{ contentId: string; newWork?: boolean }>()
 const emit = defineEmits<{ dirty: []; saved: []; accepted: [contentId: string] }>()
@@ -11,6 +13,9 @@ const url = ref('')
 const intake = ref<UrlIntake>()
 const manualBody = ref('')
 const manualVisible = ref(false)
+const manualCaption = ref('')
+const pinnedCommentState = ref<PinnedAuthorCommentState>('NONE')
+const pinnedCommentText = ref('')
 const busy = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -18,6 +23,8 @@ const errorScope = ref<'url' | 'manual' | 'media' | 'load'>('url')
 const notice = ref('')
 const library = ref<LinkableMediaPage>({ items: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 1 })
 const selectedMediaIds = ref(new Set<string>())
+const newlyUploadedMediaIds = new Set<string>()
+const mediaState = useMediaState(() => intake.value?.id ?? props.contentId)
 
 const statusLabel = computed(() => ({
   URL_ACCEPTED: '수집 대기',
@@ -35,6 +42,9 @@ function applyIntake(value: UrlIntake) {
   url.value = value.originalUrl
   manualBody.value = value.manualBody ?? ''
   manualVisible.value = value.status !== 'URL_ACCEPTED' || value.manualBodyPresent
+  manualCaption.value = value.manualCaption ?? ''
+  pinnedCommentState.value = value.pinnedAuthorCommentState ?? 'NONE'
+  pinnedCommentText.value = value.pinnedAuthorCommentText ?? ''
   selectedMediaIds.value = new Set(value.linkedMediaIds)
 }
 
@@ -48,9 +58,14 @@ async function load() {
   intake.value = undefined
   manualBody.value = ''
   manualVisible.value = false
+  manualCaption.value = ''
+  pinnedCommentState.value = 'NONE'
+  pinnedCommentText.value = ''
+  mediaState.reset()
   error.value = ''
   notice.value = ''
   selectedMediaIds.value = new Set()
+  newlyUploadedMediaIds.clear()
   library.value = { items: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 1 }
   if (props.newWork) return
   loading.value = true
@@ -72,7 +87,7 @@ async function submitUrl() {
   notice.value = ''
   busy.value = true
   try {
-    const value = await api.createUrlIntake(url.value)
+    const value = await api.createInstagramIntake(url.value)
     applyIntake(value)
     notice.value = value.isDuplicate
       ? '이미 등록된 URL입니다. 기존 작업을 불러왔습니다.'
@@ -121,6 +136,69 @@ async function saveManualBody() {
   }
 }
 
+function setPinnedCommentState(value: PinnedAuthorCommentState) {
+  pinnedCommentState.value = value
+  if (value === 'NONE') pinnedCommentText.value = ''
+  emit('dirty')
+}
+
+async function uploadLocalMedia(file: File) {
+  const uploaded = await mediaState.upload(file)
+  if (!uploaded || mediaState.operationError.value) return
+  await loadLibrary()
+  const uploadedId = uploaded.item.id
+  if (!uploaded.reused) newlyUploadedMediaIds.add(uploadedId)
+  selectedMediaIds.value = new Set([...selectedMediaIds.value, uploadedId])
+  emit('dirty')
+}
+
+async function compensateNewUploads(): Promise<boolean> {
+  const ids = [...newlyUploadedMediaIds]
+  const results = await Promise.allSettled(
+    ids.map(id => api.permanentlyDeleteOrphanMedia(id)),
+  )
+  let complete = true
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      newlyUploadedMediaIds.delete(ids[index]!)
+      selectedMediaIds.value.delete(ids[index]!)
+    } else {
+      complete = false
+    }
+  })
+  selectedMediaIds.value = new Set(selectedMediaIds.value)
+  try { await loadLibrary() } catch { complete = false }
+  return complete
+}
+
+async function saveManualInstagram() {
+  if (!intake.value || busy.value) return
+  error.value = ''
+  notice.value = ''
+  busy.value = true
+  try {
+    applyIntake(await api.saveManualInstagram(
+      intake.value.id,
+      manualCaption.value,
+      pinnedCommentState.value,
+      pinnedCommentText.value,
+      [...selectedMediaIds.value],
+    ))
+    newlyUploadedMediaIds.clear()
+    notice.value = '수동으로 입력한 Instagram 자료와 로컬 이미지 연결을 저장했습니다.'
+    emit('saved')
+  } catch (errorValue) {
+    errorScope.value = 'manual'
+    const cleanupComplete = await compensateNewUploads()
+    error.value = message(errorValue)
+    if (!cleanupComplete) {
+      error.value += ' 새로 업로드한 이미지 자동 정리에 실패했습니다. 휴지통·미디어 정리에서 확인하세요.'
+    }
+  } finally {
+    busy.value = false
+  }
+}
+
 function toggleMedia(id: string) {
   const next = new Set(selectedMediaIds.value)
   if (next.has(id)) next.delete(id)
@@ -153,14 +231,14 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
   <section class="surface form-stack url-intake" aria-labelledby="url-intake-title">
     <div class="section-title">
       <div>
-        <h2 id="url-intake-title">원본 URL</h2>
-        <p>URL을 저장하고 중복을 확인합니다. 외부 사이트 접속이나 자동 수집은 실행하지 않습니다.</p>
+        <h2 id="url-intake-title">Instagram 수동 등록</h2>
+        <p>게시물·Reel 주소와 사용자가 직접 확인한 내용만 저장합니다. 외부 사이트 접속이나 자동 수집은 실행하지 않습니다.</p>
       </div>
       <span v-if="intake" class="status-badge">{{ statusLabel }}</span>
     </div>
 
     <form class="url-intake-form" @submit.prevent="submitUrl">
-      <label for="source-url">URL</label>
+      <label for="source-url">Instagram 게시물/Reel URL</label>
       <div class="url-intake-row">
         <input
           id="source-url"
@@ -171,14 +249,14 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
           :disabled="busy || loading"
           :aria-invalid="Boolean(error) && errorScope === 'url'"
           :aria-describedby="error && errorScope === 'url' ? 'url-intake-help url-intake-error' : 'url-intake-help'"
-          placeholder="https://example.com/content"
+          placeholder="https://www.instagram.com/p/shortcode/"
           @input="emit('dirty')"
         >
         <button class="button primary" type="submit" :disabled="busy || loading">
           {{ busy ? '저장 중…' : 'URL 추가' }}
         </button>
       </div>
-      <small id="url-intake-help">absolute http/https URL만 허용하며 URL 존재 여부는 확인하지 않습니다.</small>
+      <small id="url-intake-help">instagram.com의 게시물(p)·Reel(reel) permalink만 허용합니다. query·fragment는 제거하며 URL 존재 여부는 확인하지 않습니다.</small>
     </form>
 
     <p v-if="loading" class="muted" role="status">저장된 URL 상태를 불러오는 중입니다.</p>
@@ -191,7 +269,91 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
       <div><dt>접수 상태</dt><dd>{{ statusLabel }}</dd></div>
     </dl>
 
-    <div v-if="intake" class="manual-body-panel">
+    <div v-if="intake?.sourceKind === 'INSTAGRAM'" class="manual-instagram-panel form-stack">
+      <div class="section-title compact">
+        <div>
+          <h3>수동 입력 내용</h3>
+          <p>Caption과 작성자 고정 댓글은 Instagram에서 자동으로 가져오지 않습니다.</p>
+        </div>
+        <span class="status-badge">{{ intake.instagramContentType === 'POST' ? '게시물' : 'Reel' }}</span>
+      </div>
+
+      <label for="manual-caption">Caption 직접 입력</label>
+      <textarea
+        id="manual-caption"
+        v-model="manualCaption"
+        rows="6"
+        maxlength="20000"
+        :disabled="busy"
+        :aria-invalid="Boolean(error) && errorScope === 'manual'"
+        aria-describedby="manual-caption-help"
+        @input="emit('dirty')"
+      />
+      <small id="manual-caption-help">사용자가 직접 확인한 Caption만 입력합니다. 자동 수집 결과가 아닙니다.</small>
+
+      <fieldset class="pinned-comment-choice">
+        <legend>게시물 작성자가 작성한 고정 댓글</legend>
+        <label>
+          <input
+            type="radio"
+            name="pinned-author-comment"
+            value="PRESENT"
+            :checked="pinnedCommentState === 'PRESENT'"
+            :disabled="busy"
+            @change="setPinnedCommentState('PRESENT')"
+          >
+          있음
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="pinned-author-comment"
+            value="NONE"
+            :checked="pinnedCommentState === 'NONE'"
+            :disabled="busy"
+            @change="setPinnedCommentState('NONE')"
+          >
+          없음
+        </label>
+      </fieldset>
+      <small id="pinned-comment-help">
+        게시물 작성자가 직접 작성하고 고정한 댓글을 입력하세요.
+        여러 개라면 화면에서 가장 위에 표시되는 댓글 1개를 입력하세요.
+      </small>
+      <label for="pinned-author-comment-text">작성자 고정 댓글 본문</label>
+      <textarea
+        id="pinned-author-comment-text"
+        v-model="pinnedCommentText"
+        rows="4"
+        maxlength="10000"
+        :disabled="busy || pinnedCommentState === 'NONE'"
+        :required="pinnedCommentState === 'PRESENT'"
+        :aria-invalid="Boolean(error) && errorScope === 'manual'"
+        aria-describedby="pinned-comment-help"
+        @input="emit('dirty')"
+      />
+
+      <MediaUploadPanel
+        :preview-url="mediaState.uploadPreviewUrl.value"
+        :file-name="mediaState.uploadFile.value?.name"
+        :progress="mediaState.uploadProgress.value"
+        :uploading="mediaState.uploading.value"
+        :result="mediaState.uploadResult.value"
+        :error="mediaState.operationError.value"
+        @upload="uploadLocalMedia"
+        @cancel="mediaState.cancelUpload"
+        @clear="mediaState.clearPreview"
+      />
+      <small>현재 승인된 로컬 업로드 형식은 JPEG, PNG, WebP입니다. 영상은 별도 저장 정책·decoder 승인 전까지 지원하지 않습니다.</small>
+
+      <div class="inline-actions">
+        <button class="button primary" type="button" :disabled="busy || mediaState.uploading.value" @click="saveManualInstagram">
+          {{ busy ? '저장 중…' : '수동 등록 저장' }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="intake && intake.sourceKind !== 'INSTAGRAM'" class="manual-body-panel">
       <div class="section-title compact">
         <div><h3>본문 직접 입력</h3><p>자동 수집 없이 사용자가 제공한 본문만 저장합니다.</p></div>
         <button
@@ -229,8 +391,9 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
       :page="library"
       :selected-ids="selectedMediaIds"
       :busy="busy"
+      :show-save="intake.sourceKind !== 'INSTAGRAM'"
       @toggle="toggleMedia"
-      @save="saveMediaLinks"
+      @save="intake.sourceKind === 'INSTAGRAM' ? saveManualInstagram() : saveMediaLinks()"
       @page="loadLibrary"
     />
   </section>

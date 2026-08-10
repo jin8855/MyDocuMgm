@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LinkableMediaPage } from '../../shared/types'
 
-defineProps<{ page: LinkableMediaPage; selectedIds: ReadonlySet<string>; busy?: boolean }>()
+defineProps<{ page: LinkableMediaPage; selectedIds: ReadonlySet<string>; busy?: boolean; showSave?: boolean }>()
 const emit = defineEmits<{ toggle: [id: string]; save: []; page: [page: number] }>()
 </script>
 
@@ -12,7 +12,7 @@ const emit = defineEmits<{ toggle: [id: string]; save: []; page: [page: number] 
         <h3 id="media-link-title">기존 로컬 이미지 연결</h3>
         <p>기존 파일을 복사하거나 이동하지 않고 콘텐츠 관계만 저장합니다.</p>
       </div>
-      <button class="button primary" type="button" :disabled="busy" @click="emit('save')">
+      <button v-if="showSave !== false" class="button primary" type="button" :disabled="busy" @click="emit('save')">
         {{ busy ? '저장 중…' : `선택 ${selectedIds.size}개 저장` }}
       </button>
     </div>

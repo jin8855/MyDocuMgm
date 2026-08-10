@@ -18,6 +18,17 @@ public sealed class UrlIntakeController(UrlIntakeService service) : ControllerBa
             : CreatedAtAction(nameof(Get), new { contentId = result.Id }, result);
     }
 
+    [HttpPost("instagram")]
+    public async Task<ActionResult<UrlIntakeDto>> CreateInstagram(
+        [FromBody] CreateInstagramIntakeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await service.IntakeInstagramAsync(request, cancellationToken);
+        return result.IsDuplicate
+            ? Ok(result)
+            : CreatedAtAction(nameof(Get), new { contentId = result.Id }, result);
+    }
+
     [HttpGet("{contentId:guid}")]
     public Task<UrlIntakeDto> Get(Guid contentId, CancellationToken cancellationToken) =>
         service.GetAsync(contentId, cancellationToken);
@@ -34,6 +45,13 @@ public sealed class UrlIntakeController(UrlIntakeService service) : ControllerBa
         [FromBody] SaveManualBodyRequest request,
         CancellationToken cancellationToken) =>
         service.SaveManualBodyAsync(contentId, request, cancellationToken);
+
+    [HttpPut("{contentId:guid}/manual-instagram")]
+    public Task<UrlIntakeDto> SaveManualInstagram(
+        Guid contentId,
+        [FromBody] SaveManualInstagramRequest request,
+        CancellationToken cancellationToken) =>
+        service.SaveManualInstagramAsync(contentId, request, cancellationToken);
 
     [HttpGet("media-library")]
     public Task<LinkableMediaPage> MediaLibrary(

@@ -29,6 +29,7 @@ public sealed class EfModelTests
         Assert.Contains("CategorySearchAttributes", tables);
         Assert.Contains("OtherDetails", tables);
         Assert.Contains("ContentMediaLinks", tables);
+        Assert.Contains("BlogDrafts", tables);
         Assert.DoesNotContain("Publication", tables);
         Assert.DoesNotContain("ImportJobs", tables);
     }
@@ -44,11 +45,21 @@ public sealed class EfModelTests
         var step = context.Model.FindEntityType(typeof(ContentStep))!;
         var tag = context.Model.FindEntityType(typeof(Tag))!;
         var mediaLink = context.Model.FindEntityType(typeof(ContentMediaLink))!;
+        var blogDraft = context.Model.FindEntityType(typeof(BlogDraft))!;
 
         Assert.True(content.FindProperty(nameof(Content.RowVersion))!.IsConcurrencyToken);
         Assert.True(media.FindProperty(nameof(MediaAsset.RowVersion))!.IsConcurrencyToken);
         Assert.True(category.FindProperty(nameof(Category.RowVersion))!.IsConcurrencyToken);
         Assert.True(ingredient.FindProperty(nameof(CookingIngredient.RowVersion))!.IsConcurrencyToken);
+        Assert.True(blogDraft.FindProperty(nameof(BlogDraft.RowVersion))!.IsConcurrencyToken);
+        Assert.Equal(BlogDraft.TitleMaxLength, blogDraft.FindProperty(nameof(BlogDraft.Title))!.GetMaxLength());
+        Assert.Equal(BlogDraft.BodyMaxLength, blogDraft.FindProperty(nameof(BlogDraft.Body))!.GetMaxLength());
+        Assert.Contains(blogDraft.GetIndexes(), index =>
+            index.IsUnique && index.Properties.Single().Name == nameof(BlogDraft.ContentId));
+        Assert.Contains(blogDraft.GetForeignKeys(), key =>
+            key.PrincipalEntityType.ClrType == typeof(Content) &&
+            key.IsUnique &&
+            key.DeleteBehavior == DeleteBehavior.Cascade);
         Assert.NotEmpty(content.GetDeclaredQueryFilters());
         Assert.NotEmpty(media.GetDeclaredQueryFilters());
         Assert.Contains(category.GetIndexes(), index => index.IsUnique && index.Properties.Single().Name == nameof(Category.Code));

@@ -30,7 +30,7 @@ public sealed class DomainRulesTests
         Assert.Equal(expected, ContentStatusRules.IsPhase1Selectable(status));
 
     [Fact]
-    public void CategoryChange_WithDetails_IsBlockedWithoutDeletingDetails()
+    public void CategoryChange_PreservesDormantDetails()
     {
         var content = new Content
         {
@@ -38,24 +38,24 @@ public sealed class DomainRulesTests
             PlaceDetails = new PlaceDetails()
         };
 
-        var exception = Assert.Throws<DomainRuleException>(() => content.ChangeCategory(CategoryCatalog.All[1].Id));
+        content.ChangeCategory(CategoryCatalog.All[1].Id);
 
-        Assert.Equal("CATEGORY_DETAIL_CONFLICT", exception.Code);
+        Assert.Equal(CategoryCatalog.All[1].Id, content.CategoryId);
         Assert.NotNull(content.PlaceDetails);
     }
 
     [Fact]
-    public void DetailsConsistency_BlocksMismatchedCategory()
+    public void DetailsConsistency_AllowsDormantDetailsButBlocksForeignOwnership()
     {
         var content = new Content
         {
             CategoryId = CategoryCatalog.All.Single(category => category.Code == "COOKING").Id,
-            PlaceDetails = new PlaceDetails()
+            PlaceDetails = new PlaceDetails { ContentId = Guid.NewGuid() }
         };
 
         var exception = Assert.Throws<DomainRuleException>(() => DetailsConsistency.Validate(content));
 
-        Assert.Equal("CATEGORY_DETAIL_MISMATCH", exception.Code);
+        Assert.Equal("CATEGORY_DETAIL_CONTENT_MISMATCH", exception.Code);
     }
 
     [Fact]

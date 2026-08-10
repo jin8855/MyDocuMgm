@@ -47,6 +47,23 @@ public enum ContentSourceKind
     INSTAGRAM
 }
 
+public enum InstagramContentType
+{
+    POST,
+    REEL
+}
+
+public enum PinnedAuthorCommentState
+{
+    PRESENT,
+    NONE
+}
+
+public enum SourceAcquisitionMode
+{
+    MANUAL
+}
+
 public enum IntakeStatus
 {
     URL_ACCEPTED,

@@ -83,6 +83,29 @@ public sealed class EfUrlIntakeRepository(MyDocuMgmDbContext dbContext) : IUrlIn
         IReadOnlyCollection<Guid> mediaIds,
         CancellationToken cancellationToken)
     {
+        var requestedIds = await ValidateLinkableMediaAsync(mediaIds, cancellationToken);
+        ApplyLinkedMedia(content, requestedIds);
+        await SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SaveManualInstagramAsync(
+        Content content,
+        string caption,
+        PinnedAuthorCommentState commentState,
+        string? commentText,
+        IReadOnlyCollection<Guid> mediaIds,
+        CancellationToken cancellationToken)
+    {
+        var requestedIds = await ValidateLinkableMediaAsync(mediaIds, cancellationToken);
+        content.SaveManualInstagram(caption, commentState, commentText);
+        ApplyLinkedMedia(content, requestedIds);
+        await SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<HashSet<Guid>> ValidateLinkableMediaAsync(
+        IReadOnlyCollection<Guid> mediaIds,
+        CancellationToken cancellationToken)
+    {
         var requestedIds = mediaIds.ToHashSet();
         var existingMediaIds = await dbContext.MediaAssets.AsNoTracking()
             .Where(media => requestedIds.Contains(media.Id) && media.StorageStatus == MediaStorageStatus.READY)
@@ -95,6 +118,11 @@ public sealed class EfUrlIntakeRepository(MyDocuMgmDbContext dbContext) : IUrlIn
                 "연결할 수 없는 이미지가 포함되어 있습니다.");
         }
 
+        return requestedIds;
+    }
+
+    private void ApplyLinkedMedia(Content content, IReadOnlySet<Guid> requestedIds)
+    {
         var removed = content.LinkedMedia
             .Where(link => !requestedIds.Contains(link.MediaAssetId))
             .ToArray();
@@ -111,8 +139,6 @@ public sealed class EfUrlIntakeRepository(MyDocuMgmDbContext dbContext) : IUrlIn
                 MediaAssetId = mediaId
             });
         }
-
-        await SaveChangesAsync(cancellationToken);
     }
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)

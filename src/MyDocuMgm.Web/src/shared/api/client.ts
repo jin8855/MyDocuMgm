@@ -1,8 +1,14 @@
 import type {
+  BlogDraft,
+  BlogDraftPatch,
   Category,
+  CategoryEdit,
   ContentItem,
   ContentPage,
+  DetailStage,
   CookingIngredient,
+  ImageStage,
+  ImageStageMediaItem,
   MediaFilter,
   MediaItem,
   MediaPage,
@@ -10,10 +16,12 @@ import type {
   MediaUploadResult,
   LinkableMediaPage,
   OrphanMediaItem,
+  PinnedAuthorCommentState,
   SearchAttribute,
   SearchQuery,
   UrlIntake,
   TrashContentItem,
+  WorkflowStep,
 } from '../types'
 import { cloneValue } from '../utils/clone'
 import { resolveWorkflowStep } from '../presentation/labels'
@@ -120,6 +128,15 @@ let contents: ContentItem[] = Array.from({ length: 31 }, (_, index) => {
     tags: index === 0 ? ['새우', '간단요리', '간식'] : [category.displayName, '생활팁'],
   }
 })
+const categoryEditValues = new Map<string, Record<string, Record<string, string | null>>>([[
+  mockContentId,
+  {
+    COOKING: {
+      servings: '2', preparationMinutes: '15', cookingMinutes: '20', difficulty: '보통',
+    },
+  },
+]])
+
 const deletedContentIds = new Set<string>()
 
 let media: import('../types').MediaItem[] = Array.from({ length: 137 }, (_, index) => ({
@@ -151,11 +168,20 @@ const demoIntake: UrlIntake = {
   isDuplicate: false,
   manualBody: null,
   manualBodyPresent: false,
+  instagramContentType: null,
+  manualCaption: null,
+  pinnedAuthorCommentState: null,
+  pinnedAuthorCommentText: null,
+  sourceAcquisitionMode: null,
   linkedMediaIds: [],
 }
 const urlIntakes = new Map<string, UrlIntake>([[mockContentId, demoIntake]])
+const imageStageLinks = new Map<string, string[]>([[mockContentId, []]])
+const blogDrafts = new Map<string, { title: string; body: string; rowVersion: string }>()
 
-function normalizeMockUrl(input: string): Pick<UrlIntake, 'originalUrl' | 'normalizedUrl' | 'sourceKind'> {
+function normalizeMockUrl(
+  input: string,
+): Pick<UrlIntake, 'originalUrl' | 'normalizedUrl' | 'sourceKind' | 'instagramContentType'> {
   const originalUrl = input.trim()
   if (!originalUrl) throw new ApiError('URL_REQUIRED', 'URL을 입력해 주세요.')
   let parsed: URL
@@ -183,10 +209,61 @@ function normalizeMockUrl(input: string): Pick<UrlIntake, 'originalUrl' | 'norma
       originalUrl,
       normalizedUrl: `https://www.instagram.com/${match[1].toLowerCase()}/${match[2]}/`,
       sourceKind: 'INSTAGRAM',
+      instagramContentType: match[1].toLowerCase() === 'p'
+        ? 'POST'
+        : match[1].toLowerCase() === 'reel' ? 'REEL' : null,
     }
   }
   parsed.hash = ''
-  return { originalUrl, normalizedUrl: parsed.toString(), sourceKind: 'GENERIC' }
+  return {
+    originalUrl,
+    normalizedUrl: parsed.toString(),
+    sourceKind: 'GENERIC',
+    instagramContentType: null,
+  }
+}
+
+function createMockUrlIntake(
+  normalized: Pick<UrlIntake, 'originalUrl' | 'normalizedUrl' | 'sourceKind' | 'instagramContentType'>,
+): UrlIntake {
+  const duplicate = [...urlIntakes.values()].find(item => item.normalizedUrl === normalized.normalizedUrl)
+  if (duplicate) return { ...cloneValue(duplicate), isDuplicate: true }
+  const id = globalThis.crypto.randomUUID()
+  const intake: UrlIntake = {
+    id,
+    ...normalized,
+    status: 'URL_ACCEPTED',
+    isDuplicate: false,
+    manualBody: null,
+    manualBodyPresent: false,
+    manualCaption: null,
+    pinnedAuthorCommentState: null,
+    pinnedAuthorCommentText: null,
+    sourceAcquisitionMode: null,
+    linkedMediaIds: [],
+  }
+  urlIntakes.set(id, intake)
+  const other = categories.find(category => category.code === 'OTHER')!
+  contents.push({
+    id,
+    categoryId: other.id,
+    categoryCode: other.code,
+    categoryDisplayName: other.displayName,
+    title: `URL 접수 · ${new URL(normalized.normalizedUrl).hostname}`,
+    shortSummary: null,
+    detailContent: null,
+    status: 'INBOX',
+    visibility: 'PRIVATE',
+    isFavorite: false,
+    experienceStatus: 'NONE',
+    currentWorkflowStep: 'URL',
+    blogDraftStatus: '미작성',
+    updatedAtUtc: new Date().toISOString(),
+    createdAtUtc: new Date().toISOString(),
+    rowVersion,
+    tags: [],
+  })
+  return cloneValue(intake)
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -211,41 +288,22 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   async createUrlIntake(url: string): Promise<UrlIntake> {
     if (!mockEnabled) return request('/api/url-intakes', { method: 'POST', body: JSON.stringify({ url }) })
-    const normalized = normalizeMockUrl(url)
-    const duplicate = [...urlIntakes.values()].find(item => item.normalizedUrl === normalized.normalizedUrl)
-    if (duplicate) return { ...cloneValue(duplicate), isDuplicate: true }
-    const id = globalThis.crypto.randomUUID()
-    const intake: UrlIntake = {
-      id,
-      ...normalized,
-      status: 'URL_ACCEPTED',
-      isDuplicate: false,
-      manualBody: null,
-      manualBodyPresent: false,
-      linkedMediaIds: [],
+    return createMockUrlIntake(normalizeMockUrl(url))
+  },
+  async createInstagramIntake(url: string): Promise<UrlIntake> {
+    if (!mockEnabled) {
+      return request('/api/url-intakes/instagram', { method: 'POST', body: JSON.stringify({ url }) })
     }
-    urlIntakes.set(id, intake)
-    const other = categories.find(category => category.code === 'OTHER')!
-    contents.push({
-      id,
-      categoryId: other.id,
-      categoryCode: other.code,
-      categoryDisplayName: other.displayName,
-      title: `URL 접수 · ${new URL(normalized.normalizedUrl).hostname}`,
-      shortSummary: null,
-      detailContent: null,
-      status: 'INBOX',
-      visibility: 'PRIVATE',
-      isFavorite: false,
-      experienceStatus: 'NONE',
-      currentWorkflowStep: 'URL',
-      blogDraftStatus: '미작성',
-      updatedAtUtc: new Date().toISOString(),
-      createdAtUtc: new Date().toISOString(),
-      rowVersion,
-      tags: [],
-    })
-    return cloneValue(intake)
+    const normalized = normalizeMockUrl(url)
+    const originalHost = new URL(normalized.originalUrl).hostname.toLowerCase()
+    if (!['instagram.com', 'www.instagram.com'].includes(originalHost) ||
+        normalized.sourceKind !== 'INSTAGRAM') {
+      throw new ApiError('INSTAGRAM_URL_REQUIRED', 'Instagram 게시물 또는 Reel URL만 입력할 수 있습니다.')
+    }
+    if (!normalized.instagramContentType) {
+      throw new ApiError('INSTAGRAM_URL_NOT_SUPPORTED', 'Instagram 게시물 또는 Reel URL만 지원합니다.')
+    }
+    return createMockUrlIntake(normalized)
   },
   async urlIntake(contentId: string): Promise<UrlIntake> {
     if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}`)
@@ -269,6 +327,50 @@ export const api = {
     const intake = await this.urlIntake(contentId)
     intake.manualBody = body.trim()
     intake.manualBodyPresent = true
+    intake.status = 'CONTENT_READY'
+    urlIntakes.set(contentId, intake)
+    return cloneValue(intake)
+  },
+  async saveManualInstagram(
+    contentId: string,
+    caption: string,
+    pinnedAuthorCommentState: PinnedAuthorCommentState,
+    pinnedAuthorCommentText: string,
+    mediaIds: string[],
+  ): Promise<UrlIntake> {
+    if (!mockEnabled) {
+      return request(`/api/url-intakes/${encodeURIComponent(contentId)}/manual-instagram`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          caption,
+          pinnedAuthorCommentState,
+          pinnedAuthorCommentText,
+          mediaIds,
+        }),
+      })
+    }
+    const trimmedCaption = caption.trim()
+    const trimmedComment = pinnedAuthorCommentText.trim()
+    if (!trimmedCaption) {
+      throw new ApiError('MANUAL_CAPTION_REQUIRED', 'Caption을 직접 입력해 주세요.')
+    }
+    if (pinnedAuthorCommentState === 'PRESENT' && !trimmedComment) {
+      throw new ApiError('PINNED_AUTHOR_COMMENT_REQUIRED', '작성자가 작성한 고정 댓글 본문을 입력해 주세요.')
+    }
+    if (mediaIds.some(id => !media.some(item =>
+      item.id === id && !item.isDeleted && item.storageStatus === 'READY'))) {
+      throw new ApiError('MEDIA_LINK_NOT_FOUND', '연결할 수 없는 이미지가 포함되어 있습니다.')
+    }
+    const intake = await this.urlIntake(contentId)
+    if (intake.sourceKind !== 'INSTAGRAM' || !intake.instagramContentType) {
+      throw new ApiError('INSTAGRAM_INTAKE_REQUIRED', 'Instagram 게시물 또는 Reel 접수 정보가 필요합니다.')
+    }
+    intake.manualCaption = trimmedCaption
+    intake.pinnedAuthorCommentState = pinnedAuthorCommentState
+    intake.pinnedAuthorCommentText = pinnedAuthorCommentState === 'NONE' ? null : trimmedComment
+    intake.sourceAcquisitionMode = 'MANUAL'
+    intake.linkedMediaIds = [...new Set(mediaIds)]
+    imageStageLinks.set(contentId, [...intake.linkedMediaIds])
     intake.status = 'CONTENT_READY'
     urlIntakes.set(contentId, intake)
     return cloneValue(intake)
@@ -307,8 +409,261 @@ export const api = {
     }
     const intake = await this.urlIntake(contentId)
     intake.linkedMediaIds = [...new Set(mediaIds)]
+    imageStageLinks.set(contentId, [...intake.linkedMediaIds])
     urlIntakes.set(contentId, intake)
     return cloneValue(intake)
+  },
+  async imageStage(contentId: string): Promise<ImageStage> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/image-stage`)
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const step = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (!step || workflowSequence.indexOf(step) < workflowSequence.indexOf('MEDIA')) {
+      throw new ApiError('IMAGE_STAGE_NOT_AVAILABLE', '분류별 편집을 완료한 뒤 이미지 단계를 진행해 주세요.')
+    }
+    const linkedMediaIds = imageStageLinks.get(contentId)
+      ?? urlIntakes.get(contentId)?.linkedMediaIds
+      ?? []
+    imageStageLinks.set(contentId, [...linkedMediaIds])
+    const linkedMedia = linkedMediaIds.flatMap((id): ImageStageMediaItem[] => {
+      const value = media.find(candidate =>
+        candidate.id === id && !candidate.isDeleted && candidate.storageStatus === 'READY')
+      return value ? [{
+        id: value.id,
+        ownerContentId: mockContentId,
+        originalFileName: value.originalFileName,
+        thumbnailUrl: value.thumbnailUrl,
+        mimeType: value.mimeType,
+        sizeBytes: value.sizeBytes,
+        width: value.width,
+        height: value.height,
+      }] : []
+    })
+    return cloneValue({
+      contentId,
+      currentWorkflowStep: item.currentWorkflowStep,
+      rowVersion: item.rowVersion,
+      linkedMediaIds: linkedMedia.map(value => value.id),
+      linkedMedia,
+    })
+  },
+  async saveImageStage(
+    contentId: string,
+    mediaIds: string[],
+    complete: boolean,
+    currentRowVersion: string,
+  ): Promise<ImageStage> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/image-stage`, {
+      method: 'PUT',
+      body: JSON.stringify({ mediaIds, complete, rowVersion: currentRowVersion }),
+    })
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (currentStep !== 'MEDIA') {
+      throw new ApiError(
+        !currentStep || workflowSequence.indexOf(currentStep) < workflowSequence.indexOf('MEDIA')
+          ? 'IMAGE_STAGE_NOT_AVAILABLE' : 'IMAGE_STAGE_ALREADY_COMPLETED',
+        '현재 콘텐츠에서 이미지 단계를 저장할 수 없습니다.',
+      )
+    }
+    const existingIds = new Set(imageStageLinks.get(contentId) ?? urlIntakes.get(contentId)?.linkedMediaIds ?? [])
+    const requestedIds = [...new Set(mediaIds)]
+    const unavailable = requestedIds.some(id => !existingIds.has(id) && !(
+      contentId === mockContentId && media.some(value =>
+        value.id === id && !value.isDeleted && value.storageStatus === 'READY')
+    ))
+    if (unavailable) {
+      throw new ApiError('IMAGE_MEDIA_NOT_AVAILABLE', '현재 콘텐츠에서 선택할 수 없는 이미지가 포함되어 있습니다.')
+    }
+    imageStageLinks.set(contentId, requestedIds)
+    const intake = urlIntakes.get(contentId)
+    if (intake) intake.linkedMediaIds = [...requestedIds]
+    const updated = { ...item, currentWorkflowStep: complete ? 'DETAIL' as const : 'MEDIA' as const }
+    contents = contents.map(value => value.id === contentId ? updated : value)
+    return this.imageStage(contentId)
+  },
+  async detailStage(contentId: string): Promise<DetailStage> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/detail-stage`)
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const step = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (!step || workflowSequence.indexOf(step) < workflowSequence.indexOf('DETAIL')) {
+      throw new ApiError('DETAIL_STAGE_NOT_AVAILABLE', '이미지 단계를 완료한 뒤 자료 상세를 검토해 주세요.')
+    }
+    const intake = urlIntakes.get(contentId)
+    const linkedMediaIds = imageStageLinks.get(contentId) ?? intake?.linkedMediaIds ?? []
+    const linkedMedia = linkedMediaIds.flatMap(id => {
+      const value = media.find(candidate =>
+        candidate.id === id && !candidate.isDeleted && candidate.storageStatus === 'READY')
+      return value ? [{
+        id: value.id,
+        ownerContentId: mockContentId,
+        originalFileName: value.originalFileName,
+        thumbnailUrl: value.thumbnailUrl,
+        mimeType: value.mimeType,
+        sizeBytes: value.sizeBytes,
+        width: value.width,
+        height: value.height,
+      }] : []
+    })
+    const values = categoryEditValues.get(contentId)?.[item.categoryCode] ?? {}
+    const detailIngredients = item.categoryCode === 'COOKING' && contentId === mockContentId
+      ? ingredients.map(value => ({
+        id: value.id,
+        sortOrder: value.sortOrder,
+        name: value.name,
+        quantity: value.quantity || null,
+        ingredientType: value.ingredientType,
+        isPrimary: value.isPrimary,
+        note: value.note || null,
+      }))
+      : []
+    return cloneValue({
+      contentId,
+      currentWorkflowStep: item.currentWorkflowStep,
+      rowVersion: item.rowVersion,
+      title: item.title,
+      shortSummary: item.shortSummary,
+      originalUrl: intake?.originalUrl ?? null,
+      normalizedUrl: intake?.normalizedUrl ?? null,
+      sourceKind: intake?.sourceKind ?? null,
+      instagramContentType: intake?.instagramContentType ?? null,
+      manualCaption: intake?.manualCaption ?? null,
+      pinnedAuthorCommentState: intake?.pinnedAuthorCommentState ?? null,
+      pinnedAuthorCommentText: intake?.pinnedAuthorCommentText ?? null,
+      manualBody: intake?.manualBody ?? item.detailContent,
+      categoryId: item.categoryId,
+      categoryCode: item.categoryCode,
+      categoryDisplayName: item.categoryDisplayName,
+      categoryValues: values,
+      ingredients: detailIngredients,
+      linkedMedia,
+      editableFields: [],
+    })
+  },
+  async saveDetailStage(
+    contentId: string,
+    values: Record<string, string | null>,
+    complete: boolean,
+    currentRowVersion: string,
+  ): Promise<DetailStage> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/detail-stage`, {
+      method: 'PUT', body: JSON.stringify({ values, complete, rowVersion: currentRowVersion }),
+    })
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (currentStep !== 'DETAIL') {
+      throw new ApiError(
+        !currentStep || workflowSequence.indexOf(currentStep) < workflowSequence.indexOf('DETAIL')
+          ? 'DETAIL_STAGE_NOT_AVAILABLE' : 'DETAIL_STAGE_ALREADY_COMPLETED',
+        '현재 콘텐츠에서는 자료 상세를 저장할 수 없습니다.',
+      )
+    }
+    if (item.rowVersion !== currentRowVersion) {
+      throw new ApiError('CONCURRENCY_CONFLICT', '다른 변경이 먼저 저장되었습니다.')
+    }
+    if (Object.keys(values).length > 0) {
+      throw new ApiError('DETAIL_FIELD_NOT_EDITABLE', '현재 자료 상세 단계에는 별도로 편집하도록 승인된 필드가 없습니다.')
+    }
+    if (complete && !item.title.trim()) {
+      throw new ApiError('DETAIL_REQUIRED_DATA_MISSING', '제목이 없는 콘텐츠는 자료 상세 검토를 완료할 수 없습니다.')
+    }
+    if (!complete) return this.detailStage(contentId)
+    const updated: ContentItem = {
+      ...item,
+      currentWorkflowStep: complete ? 'BLOG_DRAFT' : 'DETAIL',
+      updatedAtUtc: new Date().toISOString(),
+    }
+    contents = contents.map(value => value.id === contentId ? updated : value)
+    return this.detailStage(contentId)
+  },
+  async blogDraft(contentId: string): Promise<BlogDraft> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/blog-draft`)
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (currentStep !== 'BLOG_DRAFT') {
+      throw new ApiError(
+        !currentStep || workflowSequence.indexOf(currentStep) < workflowSequence.indexOf('BLOG_DRAFT')
+          ? 'BLOG_DRAFT_NOT_AVAILABLE' : 'BLOG_DRAFT_ALREADY_COMPLETED',
+        '현재 콘텐츠에서는 블로그 초안을 불러올 수 없습니다.',
+      )
+    }
+    return mapMockBlogDraft(contentId, item)
+  },
+  async completion(contentId: string): Promise<BlogDraft> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/completion`)
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    if (resolveWorkflowStep(item.currentWorkflowStep) !== 'COMPLETED') {
+      throw new ApiError('COMPLETION_NOT_AVAILABLE', '완료된 콘텐츠만 완료 화면을 조회할 수 있습니다.')
+    }
+    if (!blogDrafts.has(contentId)) {
+      throw new ApiError('COMPLETION_BLOG_DRAFT_MISSING', '완료된 콘텐츠의 저장된 블로그 초안을 찾을 수 없습니다.')
+    }
+    return mapMockBlogDraft(contentId, item)
+  },
+  async saveBlogDraft(
+    contentId: string,
+    values: BlogDraftPatch,
+    complete: boolean,
+    contentRowVersion: string,
+    draftRowVersion: string | null,
+  ): Promise<BlogDraft> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/blog-draft`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...values, complete, contentRowVersion, draftRowVersion }),
+    })
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    const existing = blogDrafts.get(contentId)
+    if (currentStep === 'COMPLETED' && complete && existing) {
+      if (values.title === undefined || values.body === undefined) {
+        throw new ApiError('BLOG_DRAFT_ALREADY_COMPLETED', '완료 응답 재확인에는 기존 요청의 제목과 본문이 필요합니다.')
+      }
+      const retryTitle = values.title ?? ''
+      const retryBody = values.body ?? ''
+      if (retryTitle === existing.title && retryBody === existing.body) {
+        return mapMockBlogDraft(contentId, item)
+      }
+      throw new ApiError('BLOG_DRAFT_ALREADY_COMPLETED', '이미 완료된 블로그 초안은 변경할 수 없습니다.')
+    }
+    if (currentStep !== 'BLOG_DRAFT') {
+      throw new ApiError(
+        !currentStep || workflowSequence.indexOf(currentStep) < workflowSequence.indexOf('BLOG_DRAFT')
+          ? 'BLOG_DRAFT_NOT_AVAILABLE' : 'BLOG_DRAFT_ALREADY_COMPLETED',
+        '현재 콘텐츠에서는 블로그 초안을 저장할 수 없습니다.',
+      )
+    }
+    if (item.rowVersion !== contentRowVersion) {
+      throw new ApiError('CONCURRENCY_CONFLICT', '다른 변경이 먼저 저장되었습니다.')
+    }
+    if (existing && existing.rowVersion !== draftRowVersion) {
+      throw new ApiError('CONCURRENCY_CONFLICT', '다른 초안 변경이 먼저 저장되었습니다.')
+    }
+    const intake = urlIntakes.get(contentId)
+    const title = values.title === undefined ? existing?.title ?? item.title : values.title ?? ''
+    const body = values.body === undefined
+      ? existing?.body ?? intake?.manualBody ?? item.detailContent ?? intake?.manualCaption ?? item.shortSummary ?? ''
+      : values.body ?? ''
+    if (title.length > 200) throw new ApiError('BLOG_DRAFT_TITLE_TOO_LONG', '초안 제목은 200자 이하여야 합니다.')
+    if (body.length > 20_000) throw new ApiError('BLOG_DRAFT_BODY_TOO_LONG', '초안 본문은 20,000자 이하여야 합니다.')
+    if (complete && !title.trim()) throw new ApiError('BLOG_DRAFT_TITLE_REQUIRED', '완료하려면 초안 제목을 입력해 주세요.')
+    if (complete && !body.trim()) throw new ApiError('BLOG_DRAFT_BODY_REQUIRED', '완료하려면 초안 본문을 입력해 주세요.')
+    blogDrafts.set(contentId, { title, body, rowVersion })
+    if (complete) {
+      const updated: ContentItem = {
+        ...item,
+        currentWorkflowStep: 'COMPLETED',
+        updatedAtUtc: new Date().toISOString(),
+      }
+      contents = contents.map(value => value.id === contentId ? updated : value)
+      return mapMockBlogDraft(contentId, updated)
+    }
+    return mapMockBlogDraft(contentId, item)
   },
   async categories(): Promise<Category[]> {
     return mockEnabled ? cloneValue(categories) : request('/api/categories')
@@ -372,6 +727,106 @@ export const api = {
     }
     return request(contentPath(id))
   },
+  async saveAnalysisReview(
+    contentId: string,
+    title: string,
+    shortSummary: string,
+    complete: boolean,
+    currentRowVersion: string,
+  ): Promise<ContentItem> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-review`, {
+        method: 'PUT',
+        body: JSON.stringify({ title, shortSummary, complete, rowVersion: currentRowVersion }),
+      })
+    }
+
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const intake = urlIntakes.get(contentId)
+    const commentIsValid = intake?.pinnedAuthorCommentState === 'NONE'
+      ? !intake.pinnedAuthorCommentText
+      : intake?.pinnedAuthorCommentState === 'PRESENT' && Boolean(intake.pinnedAuthorCommentText?.trim())
+    if (intake?.sourceKind !== 'INSTAGRAM' || !intake.instagramContentType ||
+        intake.status !== 'CONTENT_READY' || intake.sourceAcquisitionMode !== 'MANUAL' ||
+        !intake.manualCaption?.trim() || !commentIsValid) {
+      throw new ApiError(
+        'MANUAL_INSTAGRAM_INTAKE_NOT_READY',
+        '수동 Instagram 접수를 완료한 뒤 분석 검토를 진행해 주세요.',
+      )
+    }
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle || trimmedTitle.length > 200) {
+      throw new ApiError('INVALID_TITLE', '제목은 1~200자여야 합니다.')
+    }
+    if (shortSummary.length > 500) {
+      throw new ApiError('ANALYSIS_SUMMARY_TOO_LONG', '요약은 500자 이하여야 합니다.')
+    }
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (currentStep !== 'URL' && currentStep !== 'ANALYSIS_REVIEW') {
+      throw new ApiError('ANALYSIS_REVIEW_ALREADY_COMPLETED', '분석 검토를 완료한 콘텐츠입니다.')
+    }
+    const updated: ContentItem = {
+      ...item,
+      title: trimmedTitle,
+      shortSummary: shortSummary.trim() || null,
+      currentWorkflowStep: complete ? 'CATEGORY_EDIT' : 'ANALYSIS_REVIEW',
+      updatedAtUtc: new Date().toISOString(),
+    }
+    contents = contents.map(value => value.id === contentId ? updated : value)
+    return cloneValue(updated)
+  },
+  async categoryEdit(contentId: string): Promise<CategoryEdit> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/category-edit`)
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const step = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (!step || workflowSequence.indexOf(step) < workflowSequence.indexOf('CATEGORY_EDIT')) {
+      throw new ApiError('CATEGORY_EDIT_NOT_AVAILABLE', '분석 검토를 완료한 뒤 분류별 편집을 진행해 주세요.')
+    }
+    return cloneValue({
+      contentId: item.id, title: item.title, shortSummary: item.shortSummary,
+      categoryId: item.categoryId, categoryCode: item.categoryCode,
+      currentWorkflowStep: item.currentWorkflowStep, rowVersion: item.rowVersion,
+      valuesByCategory: categoryEditValues.get(contentId) ?? {},
+    })
+  },
+  async saveCategoryEdit(
+    contentId: string,
+    categoryId: string,
+    values: Record<string, string | null>,
+    complete: boolean,
+    currentRowVersion: string,
+  ): Promise<CategoryEdit> {
+    if (!mockEnabled) return request(`${contentPath(contentId)}/category-edit`, {
+      method: 'PUT', body: JSON.stringify({ categoryId, values, complete, rowVersion: currentRowVersion }),
+    })
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const currentStep = resolveWorkflowStep(item.currentWorkflowStep) as WorkflowStep | undefined
+    if (currentStep !== 'CATEGORY_EDIT') {
+      throw new ApiError(
+        !currentStep || workflowSequence.indexOf(currentStep) < workflowSequence.indexOf('CATEGORY_EDIT')
+          ? 'CATEGORY_EDIT_NOT_AVAILABLE' : 'CATEGORY_EDIT_ALREADY_COMPLETED',
+        '현재 콘텐츠에서 분류별 편집을 저장할 수 없습니다.',
+      )
+    }
+    const category = categories.find(value => value.id === categoryId)
+    if (!category) throw new ApiError('CATEGORY_REQUIRED', '분류를 선택해 주세요.')
+    const stored = categoryEditValues.get(contentId) ?? {}
+    stored[category.code] = cloneValue(values)
+    categoryEditValues.set(contentId, stored)
+    const updated: ContentItem = {
+      ...item,
+      categoryId: category.id,
+      categoryCode: category.code,
+      categoryDisplayName: category.displayName,
+      currentWorkflowStep: complete ? 'MEDIA' : 'CATEGORY_EDIT',
+      updatedAtUtc: new Date().toISOString(),
+    }
+    contents = contents.map(value => value.id === contentId ? updated : value)
+    return this.categoryEdit(contentId)
+  },
   async softDeleteContent(id: string, currentRowVersion: string): Promise<void> {
     if (mockEnabled) {
       if (!contents.some(item => item.id === id)) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
@@ -399,7 +854,7 @@ export const api = {
   },
   async orphanMedia(): Promise<OrphanMediaItem[]> {
     if (!mockEnabled) return request('/api/cleanup/orphan-media')
-    const linked = new Set([...urlIntakes.values()].flatMap(item => item.linkedMediaIds))
+    const linked = new Set([...urlIntakes.values()].flatMap(item => item.linkedMediaIds).concat(...imageStageLinks.values()))
     return media.filter(item => !linked.has(item.id)).map(item => ({
       id: item.id,
       contentId: mockContentId,
@@ -412,7 +867,8 @@ export const api = {
   },
   async permanentlyDeleteOrphanMedia(id: string): Promise<void> {
     if (!mockEnabled) return request(`/api/cleanup/orphan-media/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if ([...urlIntakes.values()].some(item => item.linkedMediaIds.includes(id))) {
+    if ([...urlIntakes.values()].some(item => item.linkedMediaIds.includes(id)) ||
+        [...imageStageLinks.values()].some(mediaIds => mediaIds.includes(id))) {
       throw new ApiError('MEDIA_STILL_REFERENCED', '연결된 미디어는 삭제할 수 없습니다.')
     }
     media = media.filter(item => item.id !== id)
@@ -588,4 +1044,38 @@ export const api = {
       body: JSON.stringify({ direction, rowVersion: value.rowVersion }),
     })
   },
+}
+
+function mapMockBlogDraft(contentId: string, item: ContentItem): BlogDraft {
+  const intake = urlIntakes.get(contentId)
+  const draft = blogDrafts.get(contentId)
+  const linkedIds = imageStageLinks.get(contentId) ?? intake?.linkedMediaIds ?? []
+  const linkedMedia = linkedIds.flatMap(id => {
+    const value = media.find(candidate =>
+      candidate.id === id && !candidate.isDeleted && candidate.storageStatus === 'READY')
+    return value ? [{
+      id: value.id,
+      ownerContentId: contentId,
+      originalFileName: value.originalFileName,
+      thumbnailUrl: value.thumbnailUrl,
+      mimeType: value.mimeType,
+      width: value.width,
+      height: value.height,
+    }] : []
+  })
+  return cloneValue({
+    contentId,
+    currentWorkflowStep: item.currentWorkflowStep,
+    contentRowVersion: item.rowVersion,
+    hasSavedDraft: Boolean(draft),
+    draftRowVersion: draft?.rowVersion ?? null,
+    title: draft?.title ?? item.title,
+    body: draft?.body ?? intake?.manualBody ?? item.detailContent ?? intake?.manualCaption ?? item.shortSummary ?? '',
+    titleMaxLength: 200,
+    bodyMaxLength: 20_000,
+    analysisTitle: item.title,
+    shortSummary: item.shortSummary,
+    categoryDisplayName: item.categoryDisplayName,
+    linkedMedia,
+  })
 }

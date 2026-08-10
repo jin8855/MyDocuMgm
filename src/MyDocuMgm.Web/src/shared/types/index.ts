@@ -6,6 +6,9 @@ export type SearchScope = 'ALL' | 'TAG'
 export type MediaFilter = 'ALL' | 'SELECTED' | 'DUPLICATE' | 'DELETED'
 export type MediaSort = 'TIME_ASC' | 'TIME_DESC'
 export type ContentSourceKind = 'GENERIC' | 'INSTAGRAM'
+export type InstagramContentType = 'POST' | 'REEL'
+export type PinnedAuthorCommentState = 'PRESENT' | 'NONE'
+export type SourceAcquisitionMode = 'MANUAL'
 export type IntakeStatus = 'URL_ACCEPTED' | 'MANUAL_INPUT_REQUIRED' | 'CONTENT_READY'
 
 export interface SearchAttribute {
@@ -80,6 +83,111 @@ export interface CookingIngredient {
   rowVersion: string
 }
 
+export interface CategoryEdit {
+  contentId: string
+  title: string
+  shortSummary: string | null
+  categoryId: string
+  categoryCode: string
+  currentWorkflowStep: WorkflowStepValue
+  rowVersion: string
+  valuesByCategory: Record<string, Record<string, string | null>>
+}
+
+export interface ImageStageMediaItem {
+  id: string
+  ownerContentId: string
+  originalFileName: string
+  thumbnailUrl: string
+  mimeType: string
+  sizeBytes: number
+  width: number
+  height: number
+}
+
+export interface ImageStage {
+  contentId: string
+  currentWorkflowStep: WorkflowStepValue
+  rowVersion: string
+  linkedMediaIds: string[]
+  linkedMedia: ImageStageMediaItem[]
+}
+
+export interface DetailStageIngredientItem {
+  id: string
+  sortOrder: number
+  name: string
+  quantity: string | null
+  ingredientType: string
+  isPrimary: boolean
+  note: string | null
+}
+
+export interface DetailStageMediaItem {
+  id: string
+  ownerContentId: string
+  originalFileName: string
+  thumbnailUrl: string
+  mimeType: string
+  sizeBytes: number
+  width: number
+  height: number
+}
+
+export interface DetailStage {
+  contentId: string
+  currentWorkflowStep: WorkflowStepValue
+  rowVersion: string
+  title: string
+  shortSummary: string | null
+  originalUrl: string | null
+  normalizedUrl: string | null
+  sourceKind: ContentSourceKind | null
+  instagramContentType: InstagramContentType | null
+  manualCaption: string | null
+  pinnedAuthorCommentState: PinnedAuthorCommentState | null
+  pinnedAuthorCommentText: string | null
+  manualBody: string | null
+  categoryId: string
+  categoryCode: string
+  categoryDisplayName: string
+  categoryValues: Record<string, string | null>
+  ingredients: DetailStageIngredientItem[]
+  linkedMedia: DetailStageMediaItem[]
+  editableFields: string[]
+}
+
+export interface BlogDraftMediaItem {
+  id: string
+  ownerContentId: string
+  originalFileName: string
+  thumbnailUrl: string
+  mimeType: string
+  width: number
+  height: number
+}
+
+export interface BlogDraft {
+  contentId: string
+  currentWorkflowStep: WorkflowStepValue
+  contentRowVersion: string
+  hasSavedDraft: boolean
+  draftRowVersion: string | null
+  title: string
+  body: string
+  titleMaxLength: number
+  bodyMaxLength: number
+  analysisTitle: string
+  shortSummary: string | null
+  categoryDisplayName: string
+  linkedMedia: BlogDraftMediaItem[]
+}
+
+export interface BlogDraftPatch {
+  title?: string | null
+  body?: string | null
+}
+
 export interface MediaItem {
   id: string
   originalFileName: string
@@ -125,6 +233,11 @@ export interface UrlIntake {
   isDuplicate: boolean
   manualBody: string | null
   manualBodyPresent: boolean
+  instagramContentType: InstagramContentType | null
+  manualCaption: string | null
+  pinnedAuthorCommentState: PinnedAuthorCommentState | null
+  pinnedAuthorCommentText: string | null
+  sourceAcquisitionMode: SourceAcquisitionMode | null
   linkedMediaIds: string[]
 }
 

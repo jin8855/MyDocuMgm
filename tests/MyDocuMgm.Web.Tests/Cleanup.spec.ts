@@ -71,12 +71,13 @@ describe('Phase 2A cleanup web contract', () => {
 
   it('calls soft-delete exactly once after confirmation and never on cancel', async () => {
     const softDelete = vi.spyOn(api, 'softDeleteContent').mockResolvedValue()
-    await router.push('/workflow/demo/detail')
+    await router.push('/workflow/demo-5/detail')
     await router.isReady()
     const host = document.createElement('div')
     const app = createApp({ template: '<RouterView />' })
     app.use(router)
     app.mount(host)
+    await flush()
     await flush()
     await flush()
 
@@ -102,7 +103,14 @@ describe('Phase 2A cleanup web contract', () => {
 
   it('loads the media workflow for non-cooking content without calling the ingredient endpoint', async () => {
     const existing = await api.content('demo-2')
-    vi.spyOn(api, 'content').mockResolvedValue({ ...existing, categoryCode: 'OTHER' })
+    vi.spyOn(api, 'content').mockResolvedValue({ ...existing, categoryCode: 'OTHER', currentWorkflowStep: 'MEDIA' })
+    vi.spyOn(api, 'imageStage').mockResolvedValue({
+      contentId: existing.id,
+      currentWorkflowStep: 'MEDIA',
+      rowVersion: existing.rowVersion,
+      linkedMediaIds: [],
+      linkedMedia: [],
+    })
     const ingredients = vi.spyOn(api, 'ingredients').mockRejectedValue(new Error('must not be called'))
     vi.spyOn(api, 'media').mockResolvedValue({
       items: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 0,

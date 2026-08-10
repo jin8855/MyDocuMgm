@@ -4,7 +4,15 @@ namespace MyDocuMgm.Application.UrlIntake;
 
 public sealed record CreateUrlIntakeRequest(string Url);
 
+public sealed record CreateInstagramIntakeRequest(string Url);
+
 public sealed record SaveManualBodyRequest(string Body);
+
+public sealed record SaveManualInstagramRequest(
+    string Caption,
+    string PinnedAuthorCommentState,
+    string? PinnedAuthorCommentText,
+    IReadOnlyList<Guid> MediaIds);
 
 public sealed record ReplaceLinkedMediaRequest(IReadOnlyList<Guid> MediaIds);
 
@@ -17,6 +25,11 @@ public sealed record UrlIntakeDto(
     bool IsDuplicate,
     string? ManualBody,
     bool ManualBodyPresent,
+    string? InstagramContentType,
+    string? ManualCaption,
+    string? PinnedAuthorCommentState,
+    string? PinnedAuthorCommentText,
+    string? SourceAcquisitionMode,
     IReadOnlyList<Guid> LinkedMediaIds);
 
 public sealed record LinkableMediaItem(
@@ -48,6 +61,13 @@ public interface IUrlIntakeRepository
     Task<LinkableMediaPage> ListLinkableMediaAsync(int page, int pageSize, CancellationToken cancellationToken);
     Task ReplaceLinkedMediaAsync(
         Content content,
+        IReadOnlyCollection<Guid> mediaIds,
+        CancellationToken cancellationToken);
+    Task SaveManualInstagramAsync(
+        Content content,
+        string caption,
+        PinnedAuthorCommentState commentState,
+        string? commentText,
         IReadOnlyCollection<Guid> mediaIds,
         CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);

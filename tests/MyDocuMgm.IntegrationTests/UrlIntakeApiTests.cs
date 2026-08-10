@@ -192,6 +192,208 @@ public sealed class UrlIntakeApiTests : IDisposable
         Assert.Empty((await client.GetFromJsonAsync<UrlIntakeDto>($"/api/url-intakes/{intake.Id}"))!.LinkedMediaIds);
     }
 
+    [Fact]
+    public async Task ManualInstagram_PostPersistsCaptionPinnedCommentAndMediaWithoutExternalRequest()
+    {
+        using var client = _factory.CreateClient();
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/url-intakes/instagram",
+            new { url = "https://instagram.com/p/Post_1/?utm_source=share#fragment" });
+        var intake = await createResponse.Content.ReadFromJsonAsync<UrlIntakeDto>();
+
+        using var saveResponse = await client.PutAsJsonAsync(
+            $"/api/url-intakes/{intake!.Id}/manual-instagram",
+            new
+            {
+                caption = "  manual caption  ",
+                pinnedAuthorCommentState = "PRESENT",
+                pinnedAuthorCommentText = "  author pinned comment  ",
+                mediaIds = new[] { _mediaId }
+            });
+        var saved = await saveResponse.Content.ReadFromJsonAsync<UrlIntakeDto>();
+        var reloaded = await client.GetFromJsonAsync<UrlIntakeDto>(
+            $"/api/url-intakes/{intake.Id}");
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, saveResponse.StatusCode);
+        Assert.Equal("POST", saved!.InstagramContentType);
+        Assert.Equal("manual caption", reloaded!.ManualCaption);
+        Assert.Equal("PRESENT", reloaded.PinnedAuthorCommentState);
+        Assert.Equal("author pinned comment", reloaded.PinnedAuthorCommentText);
+        Assert.Equal("MANUAL", reloaded.SourceAcquisitionMode);
+        Assert.Equal([_mediaId], reloaded.LinkedMediaIds);
+        Assert.Equal(0, _repository.ExternalRequestCount);
+    }
+
+    [Fact]
+    public async Task ManualInstagram_ReelNoneClearsStaleCommentAndUnsupportedUrlsAreRejected()
+    {
+        using var client = _factory.CreateClient();
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/url-intakes/instagram",
+            new { url = "https://www.instagram.com/reel/Reel_1/" });
+        var intake = await createResponse.Content.ReadFromJsonAsync<UrlIntakeDto>();
+
+        using var blankResponse = await client.PutAsJsonAsync(
+            $"/api/url-intakes/{intake!.Id}/manual-instagram",
+            new
+            {
+                caption = "caption",
+                pinnedAuthorCommentState = "PRESENT",
+                pinnedAuthorCommentText = " ",
+                mediaIds = Array.Empty<Guid>()
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, blankResponse.StatusCode);
+
+        await client.PutAsJsonAsync(
+            $"/api/url-intakes/{intake.Id}/manual-instagram",
+            new
+            {
+                caption = "caption",
+                pinnedAuthorCommentState = "PRESENT",
+                pinnedAuthorCommentText = "old comment",
+                mediaIds = Array.Empty<Guid>()
+            });
+        using var noneResponse = await client.PutAsJsonAsync(
+            $"/api/url-intakes/{intake.Id}/manual-instagram",
+            new
+            {
+                caption = "updated caption",
+                pinnedAuthorCommentState = "NONE",
+                pinnedAuthorCommentText = "must be cleared",
+                mediaIds = Array.Empty<Guid>()
+            });
+        var none = await noneResponse.Content.ReadFromJsonAsync<UrlIntakeDto>();
+
+        Assert.Equal("REEL", none!.InstagramContentType);
+        Assert.Equal("NONE", none.PinnedAuthorCommentState);
+        Assert.Null(none.PinnedAuthorCommentText);
+
+        foreach (var invalid in new[]
+                 {
+                     "https://example.com/p/AbC/",
+                     "https://www.instagram.com/profile/",
+                     "https://www.instagram.com/stories/user/1/",
+                     "https://www.instagram.com/tv/AbC/"
+                 })
+        {
+            using var rejected = await client.PostAsJsonAsync(
+                "/api/url-intakes/instagram",
+                new { url = invalid });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+
+        Assert.Equal(0, _repository.ExternalRequestCount);
+    }
+
+    [Theory]
+    [InlineData("begin-manual-input", WorkflowStep.ANALYSIS_REVIEW)]
+    [InlineData("save-manual-body", WorkflowStep.ANALYSIS_REVIEW)]
+    [InlineData("save-manual-instagram", WorkflowStep.ANALYSIS_REVIEW)]
+    [InlineData("replace-linked-media", WorkflowStep.ANALYSIS_REVIEW)]
+    [InlineData("begin-manual-input", WorkflowStep.COMPLETED)]
+    [InlineData("save-manual-body", WorkflowStep.COMPLETED)]
+    [InlineData("save-manual-instagram", WorkflowStep.COMPLETED)]
+    [InlineData("replace-linked-media", WorkflowStep.COMPLETED)]
+    public async Task UrlStageMutationApis_RejectLaterStagesWithoutPersistence(
+        string operation,
+        WorkflowStep workflowStep)
+    {
+        using var client = _factory.CreateClient();
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/url-intakes/instagram",
+            new { url = "https://www.instagram.com/p/ApiStateGate/" });
+        createResponse.EnsureSuccessStatusCode();
+        var intake = (await createResponse.Content.ReadFromJsonAsync<UrlIntakeDto>())!;
+        var content = Assert.Single(_repository.Contents);
+        content.DetailContent = "preserved body";
+        content.ManualCaption = "preserved caption";
+        content.PinnedAuthorCommentState = PinnedAuthorCommentState.PRESENT;
+        content.PinnedAuthorCommentText = "preserved author comment";
+        content.SourceAcquisitionMode = SourceAcquisitionMode.MANUAL;
+        content.IntakeStatus = IntakeStatus.CONTENT_READY;
+        content.LinkedMedia.Add(new ContentMediaLink
+        {
+            ContentId = content.Id,
+            MediaAssetId = _mediaId
+        });
+        content.CurrentWorkflowStep = workflowStep;
+        content.UpdatedAtUtc = new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Utc);
+        content.RowVersion = [7, 8, 9];
+        var before = UrlMutationSnapshot.Capture(content);
+
+        Task<HttpResponseMessage> MutateAsync() => operation switch
+        {
+            "begin-manual-input" => client.PostAsync(
+                $"/api/url-intakes/{intake.Id}/manual-input",
+                null),
+            "save-manual-body" => client.PutAsJsonAsync(
+                $"/api/url-intakes/{intake.Id}/manual-body",
+                new { body = "changed body" }),
+            "save-manual-instagram" => client.PutAsJsonAsync(
+                $"/api/url-intakes/{intake.Id}/manual-instagram",
+                new
+                {
+                    caption = "changed caption",
+                    pinnedAuthorCommentState = "NONE",
+                    pinnedAuthorCommentText = (string?)null,
+                    mediaIds = Array.Empty<Guid>()
+                }),
+            "replace-linked-media" => client.PutAsJsonAsync(
+                $"/api/url-intakes/{intake.Id}/media-links",
+                new { mediaIds = Array.Empty<Guid>() }),
+            _ => throw new InvalidOperationException($"Unknown operation: {operation}")
+        };
+
+        using var response = await MutateAsync();
+        using var problem = System.Text.Json.JsonDocument.Parse(
+            await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(
+            "URL_STAGE_ALREADY_COMPLETED",
+            problem.RootElement.GetProperty("code").GetString());
+        Assert.Equal(before, UrlMutationSnapshot.Capture(content));
+        Assert.Equal(0, _repository.SaveChangesCallCount);
+        Assert.Equal(0, _repository.ReplaceLinkedMediaCallCount);
+        Assert.Equal(0, _repository.SaveManualInstagramCallCount);
+    }
+
+    private sealed record UrlMutationSnapshot(
+        WorkflowStep WorkflowStep,
+        string Title,
+        string? OriginalUrl,
+        string? NormalizedUrl,
+        ContentSourceKind? SourceKind,
+        InstagramContentType? InstagramContentType,
+        IntakeStatus? IntakeStatus,
+        string? DetailContent,
+        string? ManualCaption,
+        PinnedAuthorCommentState? CommentState,
+        string? CommentText,
+        SourceAcquisitionMode? AcquisitionMode,
+        DateTime UpdatedAtUtc,
+        string RowVersion,
+        string LinkedMediaIds)
+    {
+        public static UrlMutationSnapshot Capture(Content content) => new(
+            content.CurrentWorkflowStep,
+            content.Title,
+            content.OriginalUrl,
+            content.NormalizedUrl,
+            content.SourceKind,
+            content.InstagramContentType,
+            content.IntakeStatus,
+            content.DetailContent,
+            content.ManualCaption,
+            content.PinnedAuthorCommentState,
+            content.PinnedAuthorCommentText,
+            content.SourceAcquisitionMode,
+            content.UpdatedAtUtc,
+            Convert.ToBase64String(content.RowVersion),
+            string.Join(",", content.LinkedMedia.Select(link => link.MediaAssetId).Order()));
+    }
+
     private static async Task<UrlIntakeDto> CreateAsync(HttpClient client, string url)
     {
         using var response = await client.PostAsJsonAsync("/api/url-intakes", new { url });
@@ -210,6 +412,9 @@ internal sealed class ConcurrentUrlIntakeRepository(Guid mediaId) : IUrlIntakeRe
 
     public IReadOnlyCollection<Content> Contents => _byUrl.Values.ToArray();
     public int ExternalRequestCount => 0;
+    public int SaveChangesCallCount { get; private set; }
+    public int ReplaceLinkedMediaCallCount { get; private set; }
+    public int SaveManualInstagramCallCount { get; private set; }
 
     public bool MediaExists(Guid id) => _mediaIds.Contains(id);
 
@@ -244,6 +449,7 @@ internal sealed class ConcurrentUrlIntakeRepository(Guid mediaId) : IUrlIntakeRe
         IReadOnlyCollection<Guid> requestedMediaIds,
         CancellationToken cancellationToken)
     {
+        ReplaceLinkedMediaCallCount++;
         lock (_linkLock)
         {
             if (requestedMediaIds.Any(id => !_mediaIds.Contains(id)))
@@ -261,5 +467,36 @@ internal sealed class ConcurrentUrlIntakeRepository(Guid mediaId) : IUrlIntakeRe
         return Task.CompletedTask;
     }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task SaveManualInstagramAsync(
+        Content content,
+        string caption,
+        PinnedAuthorCommentState commentState,
+        string? commentText,
+        IReadOnlyCollection<Guid> requestedMediaIds,
+        CancellationToken cancellationToken)
+    {
+        SaveManualInstagramCallCount++;
+        lock (_linkLock)
+        {
+            if (requestedMediaIds.Any(id => !_mediaIds.Contains(id)))
+            {
+                throw new DomainRuleException("MEDIA_LINK_NOT_FOUND", "A linked media item does not exist.");
+            }
+
+            content.SaveManualInstagram(caption, commentState, commentText);
+            content.LinkedMedia.Clear();
+            foreach (var id in requestedMediaIds.Distinct())
+            {
+                content.LinkedMedia.Add(new ContentMediaLink { ContentId = content.Id, MediaAssetId = id });
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveChangesCallCount++;
+        return Task.CompletedTask;
+    }
 }

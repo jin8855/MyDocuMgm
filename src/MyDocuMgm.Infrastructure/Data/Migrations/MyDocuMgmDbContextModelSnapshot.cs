@@ -22,6 +22,45 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("MyDocuMgm.Domain.BlogDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(20000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ContentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentId")
+                        .IsUnique();
+
+                    b.ToTable("BlogDrafts", (string)null);
+                });
+
             modelBuilder.Entity("MyDocuMgm.Domain.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -514,6 +553,10 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("InstagramContentType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("IntakeStatus")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
@@ -523,6 +566,10 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
                     b.Property<bool>("IsFavorite")
                         .HasColumnType("bit");
+
+                    b.Property<string>("ManualCaption")
+                        .HasMaxLength(20000)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("NormalizedUrl")
                         .HasMaxLength(2048)
@@ -535,6 +582,14 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<string>("PinnedAuthorCommentState")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("PinnedAuthorCommentText")
+                        .HasMaxLength(10000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -544,6 +599,10 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.Property<string>("ShortSummary")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SourceAcquisitionMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("SourceKind")
                         .HasMaxLength(20)
@@ -587,7 +646,15 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
                             t.HasCheckConstraint("CK_Contents_ExperienceStatus", "[ExperienceStatus] IN ('NONE','WANT_TO_TRY','TRIED')");
 
+                            t.HasCheckConstraint("CK_Contents_InstagramContentType", "[InstagramContentType] IS NULL OR [InstagramContentType] IN ('POST','REEL')");
+
                             t.HasCheckConstraint("CK_Contents_IntakeStatus", "[IntakeStatus] IS NULL OR [IntakeStatus] IN ('URL_ACCEPTED','MANUAL_INPUT_REQUIRED','CONTENT_READY')");
+
+                            t.HasCheckConstraint("CK_Contents_PinnedAuthorCommentConsistency", "([PinnedAuthorCommentState] IS NULL AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'NONE' AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'PRESENT' AND LEN(LTRIM(RTRIM([PinnedAuthorCommentText]))) > 0)");
+
+                            t.HasCheckConstraint("CK_Contents_PinnedAuthorCommentState", "[PinnedAuthorCommentState] IS NULL OR [PinnedAuthorCommentState] IN ('PRESENT','NONE')");
+
+                            t.HasCheckConstraint("CK_Contents_SourceAcquisitionMode", "[SourceAcquisitionMode] IS NULL OR [SourceAcquisitionMode] = 'MANUAL'");
 
                             t.HasCheckConstraint("CK_Contents_SourceKind", "[SourceKind] IS NULL OR [SourceKind] IN ('GENERIC','INSTAGRAM')");
 
@@ -1115,6 +1182,17 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
                     b.ToTable("TravelDetails", (string)null);
                 });
 
+            modelBuilder.Entity("MyDocuMgm.Domain.BlogDraft", b =>
+                {
+                    b.HasOne("MyDocuMgm.Domain.Content", "Content")
+                        .WithOne("BlogDraft")
+                        .HasForeignKey("MyDocuMgm.Domain.BlogDraft", "ContentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Content");
+                });
+
             modelBuilder.Entity("MyDocuMgm.Domain.CategorySearchAttribute", b =>
                 {
                     b.HasOne("MyDocuMgm.Domain.Category", "Category")
@@ -1356,6 +1434,8 @@ namespace MyDocuMgm.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("MyDocuMgm.Domain.Content", b =>
                 {
+                    b.Navigation("BlogDraft");
+
                     b.Navigation("CleaningLaundryDetails");
 
                     b.Navigation("ContentTags");

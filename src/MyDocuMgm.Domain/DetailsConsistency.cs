@@ -2,28 +2,22 @@ namespace MyDocuMgm.Domain;
 
 public static class DetailsConsistency
 {
+    // CategoryId identifies the one active category. Other detail rows are
+    // retained as dormant drafts so category changes remain reversible.
     public static void Validate(Content content)
     {
-        var present = new[]
+        foreach (var details in new ContentDetailsBase?[]
         {
-            (Code: "PLACE", Present: content.PlaceDetails is not null),
-            (Code: "COOKING", Present: content.CookingDetails is not null),
-            (Code: "EXERCISE", Present: content.ExerciseDetails is not null),
-            (Code: "CLEANING_LAUNDRY", Present: content.CleaningLaundryDetails is not null),
-            (Code: "TRAVEL", Present: content.TravelDetails is not null),
-            (Code: "PHOTO", Present: content.PhotoDetails is not null),
-            (Code: "STUDY", Present: content.StudyDetails is not null),
-            (Code: "PRODUCT", Present: content.ProductDetails is not null),
-            (Code: "PHONE_COMPUTER", Present: content.PhoneComputerDetails is not null),
-            (Code: "TIP", Present: content.TipDetails is not null),
-            (Code: "OTHER", Present: content.OtherDetails is not null)
-        }.Where(value => value.Present).Select(value => value.Code).ToArray();
-
-        if (present.Length > 1 || (present.Length == 1 && present[0] != CategoryCatalog.Get(content.CategoryId).Code))
+            content.PlaceDetails, content.CookingDetails, content.ExerciseDetails,
+            content.CleaningLaundryDetails, content.TravelDetails, content.PhotoDetails,
+            content.StudyDetails, content.ProductDetails, content.PhoneComputerDetails,
+            content.TipDetails, content.OtherDetails
+        }.Where(value => value is not null))
         {
-            throw new DomainRuleException(
-                "CATEGORY_DETAIL_MISMATCH",
-                "분류와 상세정보가 일치하지 않습니다. 충돌 항목을 명시적으로 수정하거나 제거하세요.");
+            if (details!.ContentId != Guid.Empty && details.ContentId != content.Id)
+            {
+                throw new DomainRuleException("CATEGORY_DETAIL_CONTENT_MISMATCH", "분류별 상세정보의 콘텐츠 소유권이 일치하지 않습니다.");
+            }
         }
     }
 }

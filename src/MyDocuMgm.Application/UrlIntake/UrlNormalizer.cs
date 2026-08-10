@@ -8,7 +8,8 @@ namespace MyDocuMgm.Application.UrlIntake;
 public sealed record NormalizedUrlResult(
     string OriginalUrl,
     string NormalizedUrl,
-    ContentSourceKind SourceKind);
+    ContentSourceKind SourceKind,
+    InstagramContentType? InstagramContentType = null);
 
 public static class UrlNormalizer
 {
@@ -18,6 +19,13 @@ public static class UrlNormalizer
             "instagram.com",
             "www.instagram.com",
             "m.instagram.com"
+        };
+
+    private static readonly HashSet<string> ManualInstagramHosts =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "instagram.com",
+            "www.instagram.com"
         };
 
     private static readonly HashSet<string> InstagramContentTypes =
@@ -56,6 +64,27 @@ public static class UrlNormalizer
         return InstagramHosts.Contains(uri.IdnHost)
             ? NormalizeInstagram(original, uri)
             : NormalizeGeneric(original, uri);
+    }
+
+    public static NormalizedUrlResult NormalizeInstagramPermalink(string? input)
+    {
+        var result = Normalize(input);
+        var uri = new Uri(result.OriginalUrl);
+        if (!ManualInstagramHosts.Contains(uri.IdnHost))
+        {
+            throw Invalid(
+                "INSTAGRAM_URL_REQUIRED",
+                "Instagram 게시물 또는 Reel URL만 입력할 수 있습니다.");
+        }
+
+        if (result.InstagramContentType is null)
+        {
+            throw Invalid(
+                "INSTAGRAM_URL_NOT_SUPPORTED",
+                "Instagram 게시물 또는 Reel URL만 지원합니다.");
+        }
+
+        return result;
     }
 
     public static byte[] ComputeHash(string normalizedUrl) =>
@@ -100,10 +129,17 @@ public static class UrlNormalizer
         }
 
         var contentType = segments[0].ToLowerInvariant();
+        var instagramContentType = contentType switch
+        {
+            "p" => Domain.InstagramContentType.POST,
+            "reel" => Domain.InstagramContentType.REEL,
+            _ => (Domain.InstagramContentType?)null
+        };
         return new NormalizedUrlResult(
             original,
             $"https://www.instagram.com/{contentType}/{segments[1]}/",
-            ContentSourceKind.INSTAGRAM);
+            ContentSourceKind.INSTAGRAM,
+            instagramContentType);
     }
 
     private static string FormatHost(Uri uri) =>

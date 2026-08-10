@@ -32,6 +32,8 @@ public sealed class CategorySearchAttribute
 public sealed class Content
 {
     public const int ManualBodyMaxLength = 20_000;
+    public const int ManualCaptionMaxLength = 20_000;
+    public const int PinnedAuthorCommentMaxLength = 10_000;
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CategoryId { get; set; }
@@ -47,6 +49,11 @@ public sealed class Content
     public string? NormalizedUrl { get; set; }
     public byte[]? NormalizedUrlHash { get; set; }
     public ContentSourceKind? SourceKind { get; set; }
+    public InstagramContentType? InstagramContentType { get; set; }
+    public string? ManualCaption { get; set; }
+    public PinnedAuthorCommentState? PinnedAuthorCommentState { get; set; }
+    public string? PinnedAuthorCommentText { get; set; }
+    public SourceAcquisitionMode? SourceAcquisitionMode { get; set; }
     public IntakeStatus? IntakeStatus { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
@@ -54,6 +61,7 @@ public sealed class Content
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = [];
     public Category Category { get; set; } = null!;
+    public BlogDraft? BlogDraft { get; set; }
     public ICollection<ContentStep> Steps { get; set; } = [];
     public ICollection<ContentTag> ContentTags { get; set; } = [];
     public ICollection<MediaAsset> MediaAssets { get; set; } = [];
@@ -99,7 +107,8 @@ public sealed class Content
         string originalUrl,
         string normalizedUrl,
         byte[] normalizedUrlHash,
-        ContentSourceKind sourceKind)
+        ContentSourceKind sourceKind,
+        InstagramContentType? instagramContentType = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(originalUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(normalizedUrl);
@@ -111,7 +120,59 @@ public sealed class Content
         NormalizedUrl = normalizedUrl;
         NormalizedUrlHash = [.. normalizedUrlHash];
         SourceKind = sourceKind;
+        InstagramContentType = instagramContentType;
         IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.URL_ACCEPTED;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SaveManualInstagram(
+        string caption,
+        PinnedAuthorCommentState commentState,
+        string? commentText)
+    {
+        if (SourceKind != ContentSourceKind.INSTAGRAM || InstagramContentType is null)
+        {
+            throw new DomainRuleException(
+                "INSTAGRAM_INTAKE_REQUIRED",
+                "Instagram 게시물 또는 Reel 접수 정보가 필요합니다.");
+        }
+
+        var trimmedCaption = caption?.Trim() ?? string.Empty;
+        if (trimmedCaption.Length == 0)
+        {
+            throw new DomainRuleException("MANUAL_CAPTION_REQUIRED", "Caption을 직접 입력해 주세요.");
+        }
+
+        if (trimmedCaption.Length > ManualCaptionMaxLength)
+        {
+            throw new DomainRuleException(
+                "MANUAL_CAPTION_TOO_LONG",
+                $"Caption은 {ManualCaptionMaxLength:N0}자 이하여야 합니다.");
+        }
+
+        var trimmedComment = commentText?.Trim();
+        if (commentState == global::MyDocuMgm.Domain.PinnedAuthorCommentState.PRESENT &&
+            string.IsNullOrWhiteSpace(trimmedComment))
+        {
+            throw new DomainRuleException(
+                "PINNED_AUTHOR_COMMENT_REQUIRED",
+                "작성자가 작성한 고정 댓글 본문을 입력해 주세요.");
+        }
+
+        if (trimmedComment?.Length > PinnedAuthorCommentMaxLength)
+        {
+            throw new DomainRuleException(
+                "PINNED_AUTHOR_COMMENT_TOO_LONG",
+                $"작성자 고정 댓글은 {PinnedAuthorCommentMaxLength:N0}자 이하여야 합니다.");
+        }
+
+        ManualCaption = trimmedCaption;
+        PinnedAuthorCommentState = commentState;
+        PinnedAuthorCommentText = commentState == global::MyDocuMgm.Domain.PinnedAuthorCommentState.NONE
+            ? null
+            : trimmedComment;
+        SourceAcquisitionMode = global::MyDocuMgm.Domain.SourceAcquisitionMode.MANUAL;
+        IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.CONTENT_READY;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -158,13 +219,6 @@ public sealed class Content
 
     public void ChangeCategory(Guid categoryId)
     {
-        if (CategoryId != categoryId && HasDetails())
-        {
-            throw new DomainRuleException(
-                "CATEGORY_DETAIL_CONFLICT",
-                "현재 분류의 상세정보가 있어 분류를 변경할 수 없습니다. 상세정보를 명시적으로 제거한 뒤 다시 시도하세요.");
-        }
-
         CategoryId = categoryId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -188,6 +242,21 @@ public sealed class Content
         DeletedAtUtc = null;
         UpdatedAtUtc = DateTime.UtcNow;
     }
+}
+
+public sealed class BlogDraft
+{
+    public const int TitleMaxLength = 200;
+    public const int BodyMaxLength = 20_000;
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContentId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = [];
+    public Content Content { get; set; } = null!;
 }
 
 public sealed class ContentStep

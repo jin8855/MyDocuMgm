@@ -182,6 +182,7 @@ export function useMediaState(contentId: () => string) {
       page.value = 1
       await load()
       activeId.value = uploaded.item.id
+      return uploaded
     } catch (error) {
       if (uploadStateVersion !== stateVersion) return
       operationError.value = operationMessage(error)
