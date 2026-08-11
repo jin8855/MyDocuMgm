@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    # The SQL integration contract requires Windows authentication. The
+    # GitHub-hosted Windows 2025 image provides SQL Server LocalDB runtime.
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      # Current official major releases use the Node 24 action runtime and are
+      # supported by GitHub-hosted runners.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: src/MyDocuMgm.Web/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore MyDocuMgm.slnx
+
+      - name: Build solution
+        run: dotnet build MyDocuMgm.slnx --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: >-
+          dotnet test tests/MyDocuMgm.UnitTests/MyDocuMgm.UnitTests.csproj
+          --configuration Release --no-build --no-restore
+          --logger "console;verbosity=normal"
+
+      - name: Start disposable SQL Server LocalDB
+        shell: pwsh
+        run: |
+          $instance = 'MSSQLLocalDB'
+          $instances = @(& sqllocaldb info)
+          if ($instance -notin $instances) {
+            & sqllocaldb create $instance
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create LocalDB instance $instance."
+            }
+          }
+
+          & sqllocaldb start $instance
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start LocalDB instance $instance."
+          }
+
+          & sqllocaldb info $instance
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to inspect LocalDB instance $instance."
+          }
+
+      - name: Run integration and SQL concurrency tests
+        env:
+          MYDOCUMGM_PHASE2C_REPAIR_SQL: 'Server=(localdb)\MSSQLLocalDB;Database=master;Integrated Security=True;Encrypt=False;TrustServerCertificate=True'
+        run: >-
+          dotnet test tests/MyDocuMgm.IntegrationTests/MyDocuMgm.IntegrationTests.csproj
+          --configuration Release --no-build --no-restore
+          --logger "console;verbosity=normal"
+
+      - name: Install Web dependencies from lockfile
+        working-directory: src/MyDocuMgm.Web
+        run: npm ci
+
+      - name: Check Web types
+        working-directory: src/MyDocuMgm.Web
+        run: npm run check
+
+      - name: Run Web tests
+        working-directory: src/MyDocuMgm.Web
+        run: npm test
+
+      - name: Build Web production bundle
+        working-directory: src/MyDocuMgm.Web
+        run: npm run build
