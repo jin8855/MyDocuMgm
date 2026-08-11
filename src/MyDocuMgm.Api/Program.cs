@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using MyDocuMgm.Application;
+using MyDocuMgm.Application.ExternalFetch;
 using MyDocuMgm.Domain;
 using MyDocuMgm.Infrastructure;
 using MyDocuMgm.Infrastructure.Storage;
@@ -25,6 +26,7 @@ app.UseExceptionHandler(errorApp =>
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var (status, title, code) = exception switch
         {
+            ExternalFetchException fetch => (ExternalFetchStatus(fetch.Kind), fetch.Message, fetch.Code),
             MediaOperationException media => (MediaStatus(media.Code), media.Message, media.Code),
             NotFoundException => (StatusCodes.Status404NotFound, "대상을 찾을 수 없습니다.", "NOT_FOUND"),
             ConcurrencyConflictException => (StatusCodes.Status409Conflict, "동시 수정 충돌", "CONCURRENCY_CONFLICT"),
@@ -38,7 +40,7 @@ app.UseExceptionHandler(errorApp =>
         {
             Status = status,
             Title = title,
-            Detail = exception is MediaOperationException or DomainRuleException or InvalidDataException or ConcurrencyConflictException
+            Detail = exception is ExternalFetchException or MediaOperationException or DomainRuleException or InvalidDataException or ConcurrencyConflictException
                 ? exception.Message
                 : null,
             Extensions = { ["code"] = code }
@@ -93,6 +95,15 @@ static int MediaStatus(string code) => code switch
         "MEDIA_CLEANUP_RESTORE_FAILED" or
         "MEDIA_CLEANUP_FINALIZE_FAILED" => StatusCodes.Status503ServiceUnavailable,
     _ => StatusCodes.Status400BadRequest
+};
+
+static int ExternalFetchStatus(ExternalFetchFailureKind kind) => kind switch
+{
+    ExternalFetchFailureKind.VALIDATION => StatusCodes.Status400BadRequest,
+    ExternalFetchFailureKind.POLICY => StatusCodes.Status422UnprocessableEntity,
+    ExternalFetchFailureKind.RETRY_LIMIT => StatusCodes.Status429TooManyRequests,
+    ExternalFetchFailureKind.TIMEOUT => StatusCodes.Status504GatewayTimeout,
+    _ => StatusCodes.Status502BadGateway
 };
 
 public partial class Program;

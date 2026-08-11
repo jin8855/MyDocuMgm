@@ -15,6 +15,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<ContentMediaLink> ContentMediaLinks => Set<ContentMediaLink>();
     public DbSet<SourceEvidence> SourceEvidence => Set<SourceEvidence>();
+    public DbSet<ExternalFetchAttempt> ExternalFetchAttempts => Set<ExternalFetchAttempt>();
     public DbSet<PlaceDetails> PlaceDetails => Set<PlaceDetails>();
     public DbSet<CookingDetails> CookingDetails => Set<CookingDetails>();
     public DbSet<CookingIngredient> CookingIngredients => Set<CookingIngredient>();
@@ -116,7 +117,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
                 "[PinnedAuthorCommentState] IS NULL OR [PinnedAuthorCommentState] IN ('PRESENT','NONE')");
             table.HasCheckConstraint(
                 "CK_Contents_SourceAcquisitionMode",
-                "[SourceAcquisitionMode] IS NULL OR [SourceAcquisitionMode] = 'MANUAL'");
+                "[SourceAcquisitionMode] IS NULL OR [SourceAcquisitionMode] IN ('MANUAL','HTTP_METADATA')");
             table.HasCheckConstraint(
                 "CK_Contents_PinnedAuthorCommentConsistency",
                 "([PinnedAuthorCommentState] IS NULL AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'NONE' AND [PinnedAuthorCommentText] IS NULL) OR ([PinnedAuthorCommentState] = 'PRESENT' AND LEN(LTRIM(RTRIM([PinnedAuthorCommentText]))) > 0)");
@@ -139,6 +140,7 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         content.Property(value => value.PinnedAuthorCommentText).HasMaxLength(Content.PinnedAuthorCommentMaxLength);
         content.Property(value => value.SourceAcquisitionMode).HasConversion<string>().HasMaxLength(20);
         content.Property(value => value.IntakeStatus).HasConversion<string>().HasMaxLength(30);
+        content.Property(value => value.ExternalContentBlogReuseConfirmedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.CreatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.UpdatedAtUtc).HasColumnType("datetime2");
         content.Property(value => value.DeletedAtUtc).HasColumnType("datetime2");
@@ -243,6 +245,35 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         evidence.Property(value => value.CapturedAtUtc).HasColumnType("datetime2");
         evidence.HasIndex(value => value.ContentId);
         evidence.HasOne(value => value.Content).WithMany(value => value.SourceEvidence).HasForeignKey(value => value.ContentId).OnDelete(DeleteBehavior.Restrict);
+
+        var fetchAttempt = modelBuilder.Entity<ExternalFetchAttempt>();
+        fetchAttempt.ToTable("ExternalFetchAttempts", table =>
+            table.HasCheckConstraint(
+                "CK_ExternalFetchAttempts_Status",
+                "[Status] IN ('STARTED','SUCCEEDED','FAILED','CANCELLED','APPLIED')"));
+        fetchAttempt.HasKey(value => value.Id);
+        fetchAttempt.Property(value => value.Status).HasConversion<string>().HasMaxLength(20);
+        fetchAttempt.Property(value => value.FinalUrl).HasMaxLength(2048);
+        fetchAttempt.Property(value => value.ResponseMimeType).HasMaxLength(100);
+        fetchAttempt.Property(value => value.ContentSha256).HasMaxLength(64);
+        fetchAttempt.Property(value => value.ETag).HasMaxLength(500);
+        fetchAttempt.Property(value => value.PageTitle).HasMaxLength(300);
+        fetchAttempt.Property(value => value.PageDescription).HasMaxLength(2000);
+        fetchAttempt.Property(value => value.AuthorName).HasMaxLength(300);
+        fetchAttempt.Property(value => value.ExtractedText).HasMaxLength(ExternalFetchAttempt.ExtractedTextMaxLength);
+        fetchAttempt.Property(value => value.ErrorCode).HasMaxLength(80);
+        fetchAttempt.Property(value => value.ErrorMessage).HasMaxLength(500);
+        fetchAttempt.Property(value => value.StartedAtUtc).HasColumnType("datetime2");
+        fetchAttempt.Property(value => value.CompletedAtUtc).HasColumnType("datetime2");
+        fetchAttempt.Property(value => value.LastModifiedAtUtc).HasColumnType("datetime2");
+        fetchAttempt.Property(value => value.PublishedAtUtc).HasColumnType("datetime2");
+        fetchAttempt.Property(value => value.RowVersion).IsRowVersion();
+        fetchAttempt.HasIndex(value => new { value.ContentId, value.AttemptNumber }).IsUnique();
+        fetchAttempt.HasIndex(value => new { value.ContentId, value.StartedAtUtc });
+        fetchAttempt.HasOne(value => value.Content)
+            .WithMany(value => value.ExternalFetchAttempts)
+            .HasForeignKey(value => value.ContentId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private static void ConfigureDetails(ModelBuilder modelBuilder)

@@ -7,12 +7,14 @@ defineProps<{
   body: string
   saving: boolean
   error: string
+  reuseConfirmed: boolean
   notice: string
 }>()
 
 const emit = defineEmits<{
   title: [value: string]
   body: [value: string]
+  reuseConfirmation: [value: boolean]
   dirty: []
 }>()
 
@@ -23,6 +25,11 @@ function updateTitle(event: Event) {
 
 function updateBody(event: Event) {
   emit('body', (event.target as HTMLTextAreaElement).value)
+  emit('dirty')
+}
+
+function updateReuseConfirmation(event: Event) {
+  emit('reuseConfirmation', (event.target as HTMLInputElement).checked)
   emit('dirty')
 }
 </script>
@@ -47,6 +54,24 @@ function updateBody(event: Event) {
     </p>
     <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
     <p v-if="notice" class="inline-notice" role="status">{{ notice }}</p>
+
+    <label
+      v-if="stage.requiresExternalSourceReuseConfirmation && !stage.externalSourceReuseConfirmed"
+      class="blog-draft-field external-reuse-confirmation"
+    >
+      <span>외부 자료 재사용 확인</span>
+      <span>
+        <input
+          type="checkbox"
+          data-testid="external-reuse-confirmation"
+          :checked="reuseConfirmed"
+          :disabled="saving"
+          @change="updateReuseConfirmation"
+        >
+        개인 보관용으로 가져온 외부 본문을 블로그 초안에 재사용할 권리를 확인했습니다.
+      </span>
+      <small>개인 자료 보관에는 확인이 필요하지 않지만 블로그 초안 재사용 전에는 명시적 확인이 필요합니다.</small>
+    </label>
 
     <div class="blog-draft-context" aria-label="이전 단계 참고 정보">
       <div><span>분석 제목</span><strong>{{ stage.analysisTitle }}</strong></div>

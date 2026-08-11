@@ -53,6 +53,7 @@ const blogDraftBody = ref('')
 const blogDraftSaving = ref(false)
 const blogDraftError = ref('')
 const blogDraftNotice = ref('')
+const blogReuseConfirmed = ref(false)
 const newlyUploadedImageIds = new Set<string>()
 const showUnsaved = ref(false)
 const showDelete = ref(false)
@@ -130,6 +131,7 @@ function resetWorkflowState() {
   blogDraftSaving.value = false
   blogDraftError.value = ''
   blogDraftNotice.value = ''
+  blogReuseConfirmed.value = false
   newlyUploadedImageIds.clear()
   showUnsaved.value = false
   showDelete.value = false
@@ -183,6 +185,7 @@ async function load() {
     blogDraftStage.value = nextBlogDraft
     blogDraftTitle.value = nextBlogDraft?.title ?? ''
     blogDraftBody.value = nextBlogDraft?.body ?? ''
+    blogReuseConfirmed.value = nextBlogDraft?.externalSourceReuseConfirmed ?? false
     if (nextImageStage) {
       imageSelectedMediaIds.value = new Set(nextImageStage.linkedMediaIds)
       imageSelectionItems.value = new Map(nextImageStage.linkedMedia.map(item => [item.id, item]))
@@ -489,6 +492,7 @@ function applyBlogDraft(value: BlogDraftData) {
   blogDraftStage.value = value
   blogDraftTitle.value = value.title
   blogDraftBody.value = value.body
+  blogReuseConfirmed.value = value.externalSourceReuseConfirmed
   if (content.value) {
     content.value = {
       ...content.value,
@@ -527,6 +531,7 @@ async function persistBlogDraft(complete: boolean): Promise<boolean> {
       complete,
       blogDraftStage.value.contentRowVersion,
       blogDraftStage.value.draftRowVersion,
+      blogReuseConfirmed.value,
     )
     applyBlogDraft(updated)
     dirty.value = false
@@ -821,8 +826,10 @@ watch(() => [props.id, props.step], load, { immediate: true })
       :saving="blogDraftSaving"
       :error="blogDraftError"
       :notice="blogDraftNotice"
+      :reuse-confirmed="blogReuseConfirmed"
       @title="blogDraftTitle = $event"
       @body="blogDraftBody = $event"
+      @reuse-confirmation="blogReuseConfirmed = $event"
       @dirty="markDirty"
     />
     <CompletedStage v-else :stage="blogDraftStage" @close="router.push('/contents')" />

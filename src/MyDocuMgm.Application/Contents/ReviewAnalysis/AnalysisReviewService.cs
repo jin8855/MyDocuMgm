@@ -19,7 +19,7 @@ public sealed class AnalysisReviewService(IContentRepository repository)
             ?? throw new NotFoundException("콘텐츠를 찾을 수 없습니다.");
 
         ContentService.EnsureRowVersion(content, request.RowVersion);
-        EnsureManualIntakeReady(content);
+        EnsureIntakeReady(content);
         Validate(request);
         EnsureReviewable(content.CurrentWorkflowStep);
 
@@ -55,8 +55,16 @@ public sealed class AnalysisReviewService(IContentRepository repository)
         }
     }
 
-    private static void EnsureManualIntakeReady(Content content)
+    private static void EnsureIntakeReady(Content content)
     {
+        if (content.SourceKind == ContentSourceKind.GENERIC &&
+            content.IntakeStatus == IntakeStatus.CONTENT_READY &&
+            content.SourceAcquisitionMode is SourceAcquisitionMode.MANUAL or SourceAcquisitionMode.HTTP_METADATA &&
+            !string.IsNullOrWhiteSpace(content.DetailContent))
+        {
+            return;
+        }
+
         var commentIsValid = content.PinnedAuthorCommentState switch
         {
             PinnedAuthorCommentState.NONE => string.IsNullOrWhiteSpace(content.PinnedAuthorCommentText),

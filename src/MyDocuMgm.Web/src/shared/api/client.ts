@@ -6,6 +6,8 @@ import type {
   ContentItem,
   ContentPage,
   DetailStage,
+  ExternalFetchApply,
+  ExternalFetchAttempt,
   CookingIngredient,
   ImageStage,
   ImageStageMediaItem,
@@ -178,6 +180,8 @@ const demoIntake: UrlIntake = {
 const urlIntakes = new Map<string, UrlIntake>([[mockContentId, demoIntake]])
 const imageStageLinks = new Map<string, string[]>([[mockContentId, []]])
 const blogDrafts = new Map<string, { title: string; body: string; rowVersion: string }>()
+const externalFetchAttempts = new Map<string, ExternalFetchAttempt[]>()
+const externalBlogReuseConfirmations = new Set<string>()
 
 function normalizeMockUrl(
   input: string,
@@ -311,6 +315,100 @@ export const api = {
     if (!intake) throw new ApiError('URL_INTAKE_NOT_FOUND', '이 콘텐츠에는 URL 접수 정보가 없습니다.')
     return cloneValue(intake)
   },
+  async startExternalFetch(contentId: string): Promise<ExternalFetchAttempt> {
+    if (!mockEnabled) {
+      return request('/api/url-intakes/' + encodeURIComponent(contentId) + '/external-fetches', {
+        method: 'POST',
+      })
+    }
+    const intake = await this.urlIntake(contentId)
+    if (intake.sourceKind !== 'GENERIC') {
+      throw new ApiError('EXTERNAL_FETCH_GENERIC_URL_REQUIRED', '일반 공개 URL만 가져올 수 있습니다.')
+    }
+      const previous = externalFetchAttempts.get(contentId) ?? []
+      if (previous.length >= 3) {
+        throw new ApiError(
+          'FETCH_RETRY_LIMIT',
+          '10분 동안 같은 자료에서 최대 3회까지 가져올 수 있습니다.',
+        )
+      }
+      const now = new Date().toISOString()
+      const syntheticFailure = previous.length === 0 &&
+        new URL(intake.normalizedUrl).pathname.includes('mock-fetch-failure')
+      const attempt: ExternalFetchAttempt = {
+      id: crypto.randomUUID(),
+      contentId,
+      attemptNumber: previous.length + 1,
+        status: syntheticFailure ? 'FAILED' : 'SUCCEEDED',
+      finalUrl: intake.normalizedUrl,
+      httpStatusCode: 200,
+      responseMimeType: 'text/html',
+      responseBytes: 512,
+      contentSha256: 'MOCK_PHASE2C_SHA256',
+      eTag: null,
+      lastModifiedAtUtc: null,
+      title: '가져온 문서 - ' + new URL(intake.normalizedUrl).hostname,
+      description: '로컬 테스트용 Phase 2C 합성 미리보기입니다.',
+      authorName: null,
+      publishedAtUtc: null,
+      body: '외부 요청 없이 생성된 합성 HTML 추출 결과입니다.',
+        errorCode: syntheticFailure ? 'FETCH_REMOTE_STATUS' : null,
+        errorMessage: syntheticFailure ? '원격 문서를 가져오지 못했습니다. 잠시 후 다시 시도하세요.' : null,
+      startedAtUtc: now,
+      completedAtUtc: now,
+      }
+      externalFetchAttempts.set(contentId, [...previous, attempt])
+      if (syntheticFailure) {
+        throw new ApiError(attempt.errorCode!, attempt.errorMessage!)
+      }
+      return cloneValue(attempt)
+  },
+  async latestExternalFetch(contentId: string): Promise<ExternalFetchAttempt> {
+    if (!mockEnabled) {
+      return request('/api/url-intakes/' + encodeURIComponent(contentId) + '/external-fetches/latest')
+    }
+    const attempt = externalFetchAttempts.get(contentId)?.at(-1)
+    if (!attempt) throw new ApiError('NOT_FOUND', '가져오기 기록을 찾을 수 없습니다.')
+    return cloneValue(attempt)
+  },
+  async applyExternalFetch(
+    contentId: string,
+    attemptId: string,
+    title: string,
+    description: string,
+    body: string,
+  ): Promise<ExternalFetchApply> {
+    if (!mockEnabled) {
+      return request(
+        '/api/url-intakes/' + encodeURIComponent(contentId) +
+          '/external-fetches/' + encodeURIComponent(attemptId) + '/apply',
+        {
+          method: 'PUT',
+          body: JSON.stringify({ title, description, body }),
+        },
+      )
+    }
+    const attempts = externalFetchAttempts.get(contentId) ?? []
+    const attempt = attempts.find(value => value.id === attemptId)
+    if (!attempt) throw new ApiError('NOT_FOUND', '가져오기 기록을 찾을 수 없습니다.')
+    if (!['SUCCEEDED', 'APPLIED'].includes(attempt.status)) {
+      throw new ApiError('EXTERNAL_FETCH_NOT_APPLICABLE', '성공한 미리보기만 적용할 수 있습니다.')
+    }
+    const intake = await this.urlIntake(contentId)
+    intake.manualBody = body.trim()
+    intake.manualBodyPresent = true
+    intake.status = 'CONTENT_READY'
+    intake.sourceAcquisitionMode = 'HTTP_METADATA'
+    urlIntakes.set(contentId, intake)
+    attempt.status = 'APPLIED'
+    const item = contents.find(value => value.id === contentId)
+    if (item) {
+      item.title = title.trim() || item.title
+      item.shortSummary = description.trim() || null
+      item.detailContent = body.trim()
+    }
+    return cloneValue({ attempt, intake })
+  },
   async beginManualInput(contentId: string): Promise<UrlIntake> {
     if (!mockEnabled) return request(`/api/url-intakes/${encodeURIComponent(contentId)}/manual-input`, { method: 'POST' })
     const intake = await this.urlIntake(contentId)
@@ -328,6 +426,7 @@ export const api = {
     intake.manualBody = body.trim()
     intake.manualBodyPresent = true
     intake.status = 'CONTENT_READY'
+    intake.sourceAcquisitionMode = 'MANUAL'
     urlIntakes.set(contentId, intake)
     return cloneValue(intake)
   },
@@ -611,10 +710,11 @@ export const api = {
     complete: boolean,
     contentRowVersion: string,
     draftRowVersion: string | null,
+    confirmExternalSourceReuse = false,
   ): Promise<BlogDraft> {
     if (!mockEnabled) return request(`${contentPath(contentId)}/blog-draft`, {
       method: 'PUT',
-      body: JSON.stringify({ ...values, complete, contentRowVersion, draftRowVersion }),
+      body: JSON.stringify({ ...values, complete, contentRowVersion, draftRowVersion, confirmExternalSourceReuse }),
     })
     const item = contents.find(value => value.id === contentId)
     if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
@@ -645,6 +745,16 @@ export const api = {
       throw new ApiError('CONCURRENCY_CONFLICT', '다른 초안 변경이 먼저 저장되었습니다.')
     }
     const intake = urlIntakes.get(contentId)
+    if (intake?.sourceAcquisitionMode === 'HTTP_METADATA' &&
+        !externalBlogReuseConfirmations.has(contentId)) {
+      if (!confirmExternalSourceReuse) {
+        throw new ApiError(
+          'BLOG_DRAFT_SOURCE_REUSE_CONFIRMATION_REQUIRED',
+          '외부 출처의 내용을 블로그 초안에 재사용하려면 권리 확인이 필요합니다.',
+        )
+      }
+      externalBlogReuseConfirmations.add(contentId)
+    }
     const title = values.title === undefined ? existing?.title ?? item.title : values.title ?? ''
     const body = values.body === undefined
       ? existing?.body ?? intake?.manualBody ?? item.detailContent ?? intake?.manualCaption ?? item.shortSummary ?? ''
@@ -747,12 +857,24 @@ export const api = {
     const commentIsValid = intake?.pinnedAuthorCommentState === 'NONE'
       ? !intake.pinnedAuthorCommentText
       : intake?.pinnedAuthorCommentState === 'PRESENT' && Boolean(intake.pinnedAuthorCommentText?.trim())
-    if (intake?.sourceKind !== 'INSTAGRAM' || !intake.instagramContentType ||
-        intake.status !== 'CONTENT_READY' || intake.sourceAcquisitionMode !== 'MANUAL' ||
-        !intake.manualCaption?.trim() || !commentIsValid) {
+    const instagramReady = intake?.sourceKind === 'INSTAGRAM' &&
+      Boolean(intake.instagramContentType) &&
+      intake.status === 'CONTENT_READY' &&
+      intake.sourceAcquisitionMode === 'MANUAL' &&
+      Boolean(intake.manualCaption?.trim()) &&
+      commentIsValid
+    const genericReady = intake?.sourceKind === 'GENERIC' &&
+      intake.status === 'CONTENT_READY' &&
+      (intake.sourceAcquisitionMode === 'MANUAL' ||
+        intake.sourceAcquisitionMode === 'HTTP_METADATA') &&
+      Boolean(intake.manualBody?.trim())
+    if (!instagramReady && !genericReady) {
+      const instagramIncomplete = intake?.sourceKind === 'INSTAGRAM'
       throw new ApiError(
-        'MANUAL_INSTAGRAM_INTAKE_NOT_READY',
-        '수동 Instagram 접수를 완료한 뒤 분석 검토를 진행해 주세요.',
+        instagramIncomplete ? 'MANUAL_INSTAGRAM_INTAKE_NOT_READY' : 'URL_INTAKE_NOT_READY',
+        instagramIncomplete
+          ? '수동 Instagram 접수를 완료한 뒤 분석 검토를 진행해 주세요.'
+          : 'URL 콘텐츠를 준비한 뒤 분석 검토를 진행해 주세요.',
       )
     }
     const trimmedTitle = title.trim()
@@ -1075,6 +1197,8 @@ function mapMockBlogDraft(contentId: string, item: ContentItem): BlogDraft {
     bodyMaxLength: 20_000,
     analysisTitle: item.title,
     shortSummary: item.shortSummary,
+    requiresExternalSourceReuseConfirmation: intake?.sourceAcquisitionMode === 'HTTP_METADATA',
+    externalSourceReuseConfirmed: intake?.sourceAcquisitionMode !== 'HTTP_METADATA' || externalBlogReuseConfirmations.has(contentId),
     categoryDisplayName: item.categoryDisplayName,
     linkedMedia,
   })

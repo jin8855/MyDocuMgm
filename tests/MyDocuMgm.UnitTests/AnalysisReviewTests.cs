@@ -83,6 +83,31 @@ public sealed class AnalysisReviewTests
         Assert.Equal(0, repository.SaveCount);
     }
 
+    [Theory]
+    [InlineData(SourceAcquisitionMode.MANUAL)]
+    [InlineData(SourceAcquisitionMode.HTTP_METADATA)]
+    public async Task Save_AllowsReadyGenericTextIntake(SourceAcquisitionMode acquisitionMode)
+    {
+        var content = CreateContent();
+        content.SourceKind = ContentSourceKind.GENERIC;
+        content.InstagramContentType = null;
+        content.ManualCaption = null;
+        content.PinnedAuthorCommentState = null;
+        content.SourceAcquisitionMode = acquisitionMode;
+        content.DetailContent = "준비된 일반 URL 본문";
+        content.IntakeStatus = IntakeStatus.CONTENT_READY;
+        var repository = new Repository(content);
+        var service = new AnalysisReviewService(repository);
+
+        var result = await service.ExecuteAsync(
+            content.Id,
+            new("일반 URL 제목", "일반 URL 요약", true, RowVersion(content)),
+            default);
+
+        Assert.Equal(WorkflowStep.CATEGORY_EDIT, result.CurrentWorkflowStep);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
     private static Content CreateContent() => new()
     {
         CategoryId = CategoryCatalog.All.Single(category => category.Code == "OTHER").Id,

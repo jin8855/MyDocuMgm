@@ -1,0 +1,376 @@
+using System.Net;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using MyDocuMgm.Application.ExternalFetch;
+using MyDocuMgm.Domain;
+using MyDocuMgm.Infrastructure.Data;
+using Xunit.Abstractions;
+
+namespace MyDocuMgm.IntegrationTests;
+
+public sealed class ExternalFetchApiTests : IDisposable
+{
+    private readonly Repository _repository = new();
+    private readonly PageFetcher _fetcher = new();
+    private readonly WebApplicationFactory<Program> _factory;
+
+    public ExternalFetchApiTests()
+    {
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureLogging(logging => logging.ClearProviders());
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IExternalFetchRepository>();
+                services.RemoveAll<IExternalPageFetcher>();
+                services.AddSingleton<IExternalFetchRepository>(_repository);
+                services.AddSingleton<IExternalPageFetcher>(_fetcher);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task PreviewAndExplicitApply_AreSeparateHttpOperations()
+    {
+        using var client = _factory.CreateClient();
+
+        using var previewResponse = await client.PostAsync(
+            $"/api/url-intakes/{_repository.Content.Id}/external-fetches",
+            null);
+        var preview = await previewResponse.Content.ReadFromJsonAsync<ExternalFetchAttemptDto>();
+
+        Assert.Equal(HttpStatusCode.Created, previewResponse.StatusCode);
+        Assert.Equal("SUCCEEDED", preview!.Status);
+        Assert.Equal("Before fetch", _repository.Content.Title);
+        Assert.Equal(IntakeStatus.URL_ACCEPTED, _repository.Content.IntakeStatus);
+        Assert.Empty(_repository.Evidence);
+
+        using var applyResponse = await client.PutAsJsonAsync(
+            $"/api/url-intakes/{_repository.Content.Id}/external-fetches/{preview.Id}/apply",
+            new
+            {
+                title = "Applied title",
+                description = "Applied description",
+                body = preview.Body
+            });
+        var applied = await applyResponse.Content.ReadFromJsonAsync<ExternalFetchApplyDto>();
+
+        Assert.Equal(HttpStatusCode.OK, applyResponse.StatusCode);
+        Assert.Equal("APPLIED", applied!.Attempt.Status);
+        Assert.Equal("CONTENT_READY", applied.Intake.Status);
+        Assert.Equal("HTTP_METADATA", applied.Intake.SourceAcquisitionMode);
+        Assert.Equal("Applied title", _repository.Content.Title);
+        Assert.Single(_repository.Evidence);
+        Assert.Equal(1, _fetcher.CallCount);
+    }
+
+    [Fact]
+    public async Task RemoteFailure_ReturnsBadGatewayAndLatestAttemptPreservesFailure()
+    {
+        _fetcher.Error = new ExternalFetchException(
+            "FETCH_REMOTE_STATUS",
+            "synthetic remote failure",
+            ExternalFetchFailureKind.REMOTE);
+        using var client = _factory.CreateClient();
+
+        using var response = await client.PostAsync(
+            $"/api/url-intakes/{_repository.Content.Id}/external-fetches",
+            null);
+        var problem = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        var latest = await client.GetFromJsonAsync<ExternalFetchAttemptDto>(
+            $"/api/url-intakes/{_repository.Content.Id}/external-fetches/latest");
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal("FETCH_REMOTE_STATUS", problem!["code"].ToString());
+        Assert.Equal("FAILED", latest!.Status);
+        Assert.Equal("FETCH_REMOTE_STATUS", latest.ErrorCode);
+        Assert.Equal("Before fetch", _repository.Content.Title);
+        Assert.Equal(IntakeStatus.URL_ACCEPTED, _repository.Content.IntakeStatus);
+    }
+
+    public void Dispose() => _factory.Dispose();
+
+    private sealed class PageFetcher : IExternalPageFetcher
+    {
+        public int CallCount { get; private set; }
+        public Exception? Error { get; set; }
+
+        public Task<ExternalPageResponse> FetchAsync(Uri uri, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            if (Error is not null)
+            {
+                return Task.FromException<ExternalPageResponse>(Error);
+            }
+
+            const string html = """
+                <html><head><title>Fetched title</title></head>
+                <body><main><p>Fetched body</p></main></body></html>
+                """;
+            return Task.FromResult(new ExternalPageResponse(
+                uri.AbsoluteUri,
+                200,
+                "text/html",
+                html.Length,
+                "SYNTHETIC_SHA256",
+                null,
+                null,
+                html));
+        }
+    }
+
+    private sealed class Repository : IExternalFetchRepository
+    {
+        public Content Content { get; } = new()
+        {
+            CategoryId = CategoryCatalog.All.Single(category => category.Code == "OTHER").Id,
+            Title = "Before fetch",
+            CurrentWorkflowStep = WorkflowStep.URL,
+            OriginalUrl = "https://example.test/article",
+            NormalizedUrl = "https://example.test/article",
+            SourceKind = ContentSourceKind.GENERIC,
+            IntakeStatus = IntakeStatus.URL_ACCEPTED,
+            RowVersion = [1]
+        };
+        public List<ExternalFetchAttempt> Attempts { get; } = [];
+        public List<SourceEvidence> Evidence { get; } = [];
+
+        public Task<Content?> FindContentAsync(Guid contentId, CancellationToken cancellationToken) =>
+            Task.FromResult(contentId == Content.Id ? Content : null);
+
+        public Task<ExternalFetchAttempt> CreateAttemptAsync(
+            Content content,
+            DateTime recentCutoffUtc,
+            CancellationToken cancellationToken)
+        {
+            var attempt = new ExternalFetchAttempt
+            {
+                ContentId = content.Id,
+                Content = content,
+                AttemptNumber = Attempts.Count + 1
+            };
+            Attempts.Add(attempt);
+            return Task.FromResult(attempt);
+        }
+
+        public Task<ExternalFetchAttempt?> FindAttemptAsync(
+            Guid contentId,
+            Guid attemptId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Attempts.SingleOrDefault(
+                attempt => attempt.ContentId == contentId && attempt.Id == attemptId));
+
+        public Task<ExternalFetchAttempt?> FindLatestAttemptAsync(
+            Guid contentId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Attempts.LastOrDefault(attempt => attempt.ContentId == contentId));
+
+        public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ApplyAsync(
+            Content content,
+            ExternalFetchAttempt attempt,
+            SourceEvidence evidence,
+            CancellationToken cancellationToken)
+        {
+            Evidence.Add(evidence);
+            return Task.CompletedTask;
+        }
+    }
+}
+
+internal sealed class Phase2CRepairSqlFactAttribute : FactAttribute
+{
+    internal const string ConnectionVariable = "MYDOCUMGM_PHASE2C_REPAIR_SQL";
+
+    public Phase2CRepairSqlFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionVariable)))
+        {
+            Skip = $"Set {ConnectionVariable} to an approved disposable SQL Server host.";
+        }
+    }
+}
+
+public sealed class Phase2CExternalFetchSqlTests(ITestOutputHelper output)
+{
+    [Phase2CRepairSqlFact]
+    public async Task DisposableSqlServer_ConcurrentRetryLimitIsAtomicAndWindowExpires()
+    {
+        var configured = Environment.GetEnvironmentVariable(Phase2CRepairSqlFactAttribute.ConnectionVariable)
+            ?? throw new InvalidOperationException("Approved disposable SQL Server setting is missing.");
+        var databaseName = $"MyDocuMgm_P2C_Repair_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}";
+        var template = new SqlConnectionStringBuilder(configured);
+        if (!template.IntegratedSecurity ||
+            !string.IsNullOrEmpty(template.UserID) ||
+            !string.IsNullOrEmpty(template.Password) ||
+            template.InitialCatalog.Equals("MyDocuMgm", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Only Windows-authenticated disposable SQL Server is allowed.");
+        }
+
+        var master = new SqlConnectionStringBuilder(template.ConnectionString) { InitialCatalog = "master" };
+        var target = new SqlConnectionStringBuilder(template.ConnectionString) { InitialCatalog = databaseName };
+        await EnsureMissingAsync(master.ConnectionString, databaseName);
+        output.WriteLine($"Disposable database: {databaseName}");
+
+        try
+        {
+            await ExecuteMasterAsync(master.ConnectionString, $"CREATE DATABASE [{databaseName}]");
+            var options = new DbContextOptionsBuilder<MyDocuMgmDbContext>()
+                .UseSqlServer(target.ConnectionString)
+                .Options;
+            await using (var migrationContext = new MyDocuMgmDbContext(options))
+            {
+                await migrationContext.Database.MigrateAsync();
+            }
+
+            var content = new Content
+            {
+                CategoryId = CategoryCatalog.All.Single(category => category.Code == "OTHER").Id,
+                Title = "Synthetic Phase 2C retry owner",
+                CurrentWorkflowStep = WorkflowStep.URL,
+                OriginalUrl = "https://example.test/phase2c-retry",
+                NormalizedUrl = "https://example.test/phase2c-retry",
+                SourceKind = ContentSourceKind.GENERIC,
+                IntakeStatus = IntakeStatus.URL_ACCEPTED
+            };
+            await using (var seedContext = new MyDocuMgmDbContext(options))
+            {
+                seedContext.Contents.Add(content);
+                await seedContext.SaveChangesAsync();
+            }
+
+            var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+            await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Testing");
+                builder.ConfigureAppConfiguration((_, configuration) =>
+                    configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ConnectionStrings:MyDocuMgm"] = target.ConnectionString
+                    }));
+                builder.ConfigureLogging(logging => logging.ClearProviders());
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<MyDocuMgmDbContext>();
+                    services.RemoveAll<DbContextOptions<MyDocuMgmDbContext>>();
+                    services.AddDbContext<MyDocuMgmDbContext>(options =>
+                        options.UseSqlServer(target.ConnectionString));
+                    services.RemoveAll<IExternalPageFetcher>();
+                    services.RemoveAll<TimeProvider>();
+                    services.AddSingleton<IExternalPageFetcher, SuccessfulPageFetcher>();
+                    services.AddSingleton<TimeProvider>(clock);
+                });
+            });
+            using var client = factory.CreateClient();
+            var requestPath = $"/api/url-intakes/{content.Id}/external-fetches";
+            var concurrent = Enumerable.Range(0, 4)
+                .Select(_ => client.PostAsync(requestPath, null))
+                .ToArray();
+            var responses = await Task.WhenAll(concurrent);
+
+            foreach (var response in responses)
+            {
+                output.WriteLine(
+                    $"Concurrent response: {(int)response.StatusCode} {response.StatusCode}; " +
+                    await response.Content.ReadAsStringAsync());
+            }
+
+            Assert.Equal(3, responses.Count(response => response.StatusCode == HttpStatusCode.Created));
+            var limited = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.TooManyRequests);
+            var problem = await limited.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            Assert.Equal("FETCH_RETRY_LIMIT", problem!["code"].ToString());
+            Assert.DoesNotContain(responses, response => response.StatusCode == HttpStatusCode.InternalServerError);
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+
+            DateTime latestStartedAtUtc;
+            await using (var verificationContext = new MyDocuMgmDbContext(options))
+            {
+                var attempts = await verificationContext.ExternalFetchAttempts
+                    .Where(attempt => attempt.ContentId == content.Id)
+                    .OrderBy(attempt => attempt.AttemptNumber)
+                    .ToListAsync();
+                Assert.Equal(3, attempts.Count);
+                Assert.Equal([1, 2, 3], attempts.Select(attempt => attempt.AttemptNumber));
+                latestStartedAtUtc = attempts.Max(attempt => attempt.StartedAtUtc);
+            }
+
+            clock.Set(new DateTimeOffset(latestStartedAtUtc, TimeSpan.Zero)
+                .AddMinutes(10)
+                .AddSeconds(1));
+            using var afterWindow = await client.PostAsync(requestPath, null);
+            Assert.Equal(HttpStatusCode.Created, afterWindow.StatusCode);
+            await using (var verificationContext = new MyDocuMgmDbContext(options))
+            {
+                Assert.Equal(4, await verificationContext.ExternalFetchAttempts.CountAsync(
+                    attempt => attempt.ContentId == content.Id));
+            }
+        }
+        finally
+        {
+            SqlConnection.ClearAllPools();
+            await ExecuteMasterAsync(
+                master.ConnectionString,
+                $"IF DB_ID(N'{databaseName}') IS NOT NULL BEGIN ALTER DATABASE [{databaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{databaseName}]; END");
+            await EnsureMissingAsync(master.ConnectionString, databaseName);
+            output.WriteLine($"Disposable database removed: {databaseName}; DB_ID = NULL");
+        }
+    }
+
+    private static async Task EnsureMissingAsync(string connectionString, string databaseName)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DB_ID(@databaseName)";
+        command.Parameters.AddWithValue("@databaseName", databaseName);
+        Assert.Equal(DBNull.Value, await command.ExecuteScalarAsync());
+    }
+
+    private static async Task ExecuteMasterAsync(string connectionString, string commandText)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = commandText;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private sealed class SuccessfulPageFetcher : IExternalPageFetcher
+    {
+        public Task<ExternalPageResponse> FetchAsync(Uri uri, CancellationToken cancellationToken)
+        {
+            const string html = "<html><body><main><p>Synthetic Phase 2C body</p></main></body></html>";
+            return Task.FromResult(new ExternalPageResponse(
+                uri.AbsoluteUri,
+                200,
+                "text/html",
+                html.Length,
+                "SYNTHETIC_PHASE2C_SHA256",
+                null,
+                null,
+                html));
+        }
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider
+    {
+        private DateTimeOffset _value = value;
+
+        public override DateTimeOffset GetUtcNow() => _value;
+
+        public void Set(DateTimeOffset value) => _value = value;
+    }
+}
