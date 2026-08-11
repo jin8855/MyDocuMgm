@@ -251,15 +251,19 @@ public sealed class Content
         }
 
         var trimmedTitle = title?.Trim();
-        if (trimmedTitle?.Length > 200)
+        if (trimmedTitle?.Length > ExternalFetchMetadataLimits.TitleMaxLength)
         {
-            throw new DomainRuleException("EXTERNAL_FETCH_TITLE_TOO_LONG", "제목은 200자 이하여야 합니다.");
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_TITLE_TOO_LONG",
+                $"제목은 {ExternalFetchMetadataLimits.TitleMaxLength}자 이하여야 합니다.");
         }
 
         var trimmedDescription = description?.Trim();
-        if (trimmedDescription?.Length > 500)
+        if (trimmedDescription?.Length > ExternalFetchMetadataLimits.DescriptionMaxLength)
         {
-            throw new DomainRuleException("EXTERNAL_FETCH_DESCRIPTION_TOO_LONG", "요약은 500자 이하여야 합니다.");
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_DESCRIPTION_TOO_LONG",
+                $"요약은 {ExternalFetchMetadataLimits.DescriptionMaxLength}자 이하여야 합니다.");
         }
 
         if (!string.IsNullOrWhiteSpace(trimmedTitle))
@@ -437,6 +441,28 @@ public sealed class SourceEvidence
     public string? SourceReference { get; set; }
     public DateTime CapturedAtUtc { get; set; } = DateTime.UtcNow;
     public Content Content { get; set; } = null!;
+}
+
+public static class ExternalFetchMetadataLimits
+{
+    public const int TitleMaxLength = 200;
+    public const int DescriptionMaxLength = 500;
+
+    public static string? NormalizeGenerated(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+        if (trimmed.Length <= maxLength) return trimmed;
+
+        var length = maxLength;
+        if (length > 0 && char.IsHighSurrogate(trimmed[length - 1]) &&
+            length < trimmed.Length && char.IsLowSurrogate(trimmed[length]))
+        {
+            length--;
+        }
+
+        return trimmed[..length];
+    }
 }
 
 public sealed class ExternalFetchAttempt

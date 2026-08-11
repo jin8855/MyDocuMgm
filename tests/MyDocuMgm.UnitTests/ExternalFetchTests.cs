@@ -2,11 +2,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.Extensions.Options;
+using MyDocuMgm.Application;
 using MyDocuMgm.Application.ExternalFetch;
 using MyDocuMgm.Domain;
 using MyDocuMgm.Infrastructure.ExternalFetch;
@@ -23,6 +25,146 @@ public sealed class ExternalFetchTests
     [InlineData("8.8.8.8", true)]
     [InlineData("2001:db8::1", false)]
     public void PublicAddressPolicy_BlocksSpecialRanges(string value, bool expected)
+    {
+        Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    public static IEnumerable<object[]> IanaNonGlobalIpv6Ranges =>
+    [
+        ["::"],
+        ["::1"],
+        ["64:ff9b:1::"],
+        ["100::"],
+        ["100:0:0:1::"],
+        ["2001:5::"],
+        ["2001::1"],
+        ["2001:2::"],
+        ["2001:10::"],
+        ["2001:db8::"],
+        ["2002:808:808::"],
+        ["3fff::"],
+        ["5f00::"],
+        ["fc00::"],
+        ["fe80::"]
+    ];
+
+    public static IEnumerable<object[]> NewlyBlockedIpv6BoundaryPoints
+    {
+        get
+        {
+            var prefixes = new (string Network, int Length, bool BeforePublic, bool AfterPublic)[]
+            {
+                ("64:ff9b:1::", 48, true, true),
+                ("100::", 64, true, false),
+                ("100:0:0:1::", 64, false, true),
+                ("2001::", 23, true, true),
+                ("2001::", 32, true, false),
+                ("2001:2::", 48, false, false),
+                ("2001:10::", 28, false, true),
+                ("2001:db8::", 32, true, true),
+                ("2002::", 16, true, true),
+                ("3fff::", 20, true, true),
+                ("5f00::", 16, true, true),
+            };
+
+            foreach (var (network, length, beforePublic, afterPublic) in prefixes)
+            {
+                var value = new BigInteger(
+                    IPAddress.Parse(network).GetAddressBytes(),
+                    isUnsigned: true,
+                    isBigEndian: true);
+                var hostBits = 128 - length;
+                var first = (value >> hostBits) << hostBits;
+                var last = first + (BigInteger.One << hostBits) - BigInteger.One;
+                var middle = first + ((last - first) / 2);
+
+                var prefix = $"{network}/{length}";
+                yield return [prefix, "first", Ipv6(first), false];
+                yield return [prefix, "middle", Ipv6(middle), false];
+                yield return [prefix, "last", Ipv6(last), false];
+                yield return [prefix, "before", Ipv6(first - BigInteger.One), beforePublic];
+                yield return [prefix, "after", Ipv6(last + BigInteger.One), afterPublic];
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(IanaNonGlobalIpv6Ranges))]
+    public void PublicAddressPolicy_BlocksEveryNonGlobalIanaIpv6Entry(string value)
+    {
+        Assert.False(SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [MemberData(nameof(NewlyBlockedIpv6BoundaryPoints))]
+    public void PublicAddressPolicy_EnforcesEveryNewIpv6CidrBoundary(
+        string prefix,
+        string point,
+        string value,
+        bool expected)
+    {
+        _ = prefix;
+        _ = point;
+        Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData("64:ff9b:1::", false)]
+    [InlineData("64:ff9b:1:8000::", false)]
+    [InlineData("64:ff9b:1:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("64:ff9b:0:ffff:ffff:ffff:ffff:ffff", true)]
+    [InlineData("64:ff9b:2::", true)]
+    [InlineData("100::", false)]
+    [InlineData("100::8000:0:0:0", false)]
+    [InlineData("100::ffff:ffff:ffff:ffff", false)]
+    [InlineData("ff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+    [InlineData("100:0:0:1::", false)]
+    [InlineData("100:0:0:1:8000::", false)]
+    [InlineData("100:0:0:1:ffff:ffff:ffff:ffff", false)]
+    [InlineData("100:0:0:2::", true)]
+    [InlineData("3fff::", false)]
+    [InlineData("3fff:800::", false)]
+    [InlineData("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+    [InlineData("4000::", true)]
+    [InlineData("5f00::", false)]
+    [InlineData("5f00:8000::", false)]
+    [InlineData("5f00:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)]
+    [InlineData("5eff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", true)]
+    [InlineData("6000::", true)]
+    public void PublicAddressPolicy_UsesExactIpv6CidrBoundaries(string value, bool expected)
+    {
+        Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData("2001:1::1", true)]
+    [InlineData("2001:1::2", true)]
+    [InlineData("2001:1::3", true)]
+    [InlineData("2001:3::1", true)]
+    [InlineData("2001:4:112::1", true)]
+    [InlineData("2001:20::1", true)]
+    [InlineData("2001:30::1", true)]
+    [InlineData("2620:4f:8000::1", true)]
+    [InlineData("2606:4700:4700::1111", true)]
+    [InlineData("2001::1", false)]
+    [InlineData("2002:808:808::", false)]
+    [InlineData("ff02::1", false)]
+    public void PublicAddressPolicy_UsesLongestPrefixAndBlocksTransitionOrMulticastRanges(
+        string value,
+        bool expected)
+    {
+        Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    [Theory]
+    [InlineData("::ffff:8.8.8.8", true)]
+    [InlineData("::ffff:10.0.0.1", false)]
+    [InlineData("64:ff9b::808:808", true)]
+    [InlineData("64:ff9b::a00:1", false)]
+    public void PublicAddressPolicy_AppliesIpv4PolicyToMappedAndNat64Addresses(
+        string value,
+        bool expected)
     {
         Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
     }
@@ -48,6 +190,27 @@ public sealed class ExternalFetchTests
         var validator = new SsrfSafeDestinationValidator(new DnsResolver(
             IPAddress.Parse("8.8.8.8"),
             IPAddress.Parse("10.0.0.2")));
+
+        var error = await Assert.ThrowsAsync<ExternalFetchException>(
+            () => validator.ValidateAsync(new Uri("https://example.test/path"), default));
+
+        Assert.Equal("FETCH_DNS_NOT_PUBLIC", error.Code);
+    }
+
+    private static string Ipv6(BigInteger value)
+    {
+        var unpadded = value.ToByteArray(isUnsigned: true, isBigEndian: true);
+        var bytes = new byte[16];
+        unpadded.CopyTo(bytes, bytes.Length - unpadded.Length);
+        return new IPAddress(bytes).ToString();
+    }
+
+    [Fact]
+    public async Task DestinationPolicy_RejectsMixedPublicAndSpecialIpv6DnsAnswers()
+    {
+        var validator = new SsrfSafeDestinationValidator(new DnsResolver(
+            IPAddress.Parse("2606:4700:4700::1111"),
+            IPAddress.Parse("3fff::1")));
 
         var error = await Assert.ThrowsAsync<ExternalFetchException>(
             () => validator.ValidateAsync(new Uri("https://example.test/path"), default));
@@ -617,6 +780,93 @@ public sealed class ExternalFetchTests
         Assert.Single(repository.Evidence);
     }
 
+    [Theory]
+    [InlineData(199, 499, 199, 499)]
+    [InlineData(200, 500, 200, 500)]
+    [InlineData(201, 501, 200, 500)]
+    public async Task Service_NormalizesFetchedMetadataToApplyLimits(
+        int titleLength,
+        int descriptionLength,
+        int expectedTitleLength,
+        int expectedDescriptionLength)
+    {
+        var content = GenericContent();
+        var repository = new Repository(content);
+        var service = new ExternalFetchService(
+            repository,
+            new PageFetcher("<main>body</main>"),
+            new MetadataExtractor(new string('T', titleLength), new string('D', descriptionLength)),
+            TimeProvider.System);
+
+        var preview = await service.StartAsync(content.Id, default);
+        var applied = await service.ApplyAsync(
+            content.Id,
+            preview.Id,
+            new(preview.Title, preview.Description, preview.Body!),
+            default);
+
+        Assert.Equal(expectedTitleLength, preview.Title!.Length);
+        Assert.Equal(expectedDescriptionLength, preview.Description!.Length);
+        Assert.Equal(preview.Title, content.Title);
+        Assert.Equal(preview.Description, content.ShortSummary);
+        Assert.Equal(preview.Title, Assert.Single(repository.Evidence).SourceTitle);
+        Assert.Equal("APPLIED", applied.Attempt.Status);
+    }
+
+    [Fact]
+    public async Task Service_TruncatesFetchedMetadataWithoutSplittingSurrogatePairs()
+    {
+        var content = GenericContent();
+        var repository = new Repository(content);
+        var service = new ExternalFetchService(
+            repository,
+            new PageFetcher("<main>body</main>"),
+            new MetadataExtractor(
+                new string('T', 199) + "😀tail",
+                new string('D', 499) + "😀tail"),
+            TimeProvider.System);
+
+        var preview = await service.StartAsync(content.Id, default);
+
+        Assert.Equal(199, preview.Title!.Length);
+        Assert.Equal(499, preview.Description!.Length);
+        Assert.Equal(preview.Title, Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(preview.Title)));
+        Assert.Equal(preview.Description, Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(preview.Description)));
+    }
+
+    [Theory]
+    [InlineData(201, 0, "EXTERNAL_FETCH_TITLE_TOO_LONG")]
+    [InlineData(0, 501, "EXTERNAL_FETCH_DESCRIPTION_TOO_LONG")]
+    public void ApplyExternalFetch_RejectsUserMetadataBeyondServerLimits(
+        int titleLength,
+        int descriptionLength,
+        string code)
+    {
+        var content = GenericContent();
+        var title = titleLength == 0 ? null : new string('T', titleLength);
+        var description = descriptionLength == 0 ? null : new string('D', descriptionLength);
+
+        var error = Assert.Throws<DomainRuleException>(
+            () => content.ApplyExternalFetch(title, description, "body"));
+
+        Assert.Equal(code, error.Code);
+    }
+
+    [Fact]
+    public async Task Service_GetLatestReturnsEmptyOnlyForExistingContent()
+    {
+        var content = GenericContent();
+        var service = new ExternalFetchService(
+            new Repository(content),
+            new PageFetcher("<main>body</main>"),
+            new HtmlContentExtractor(),
+            TimeProvider.System);
+
+        Assert.Null(await service.GetLatestAsync(content.Id, default));
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.GetLatestAsync(Guid.NewGuid(), default));
+    }
+
     [Fact]
     public async Task Service_PersistsFailureWithoutChangingContent()
     {
@@ -796,6 +1046,12 @@ public sealed class ExternalFetchTests
                 null,
                 _html));
         }
+    }
+
+    private sealed class MetadataExtractor(string title, string description) : IHtmlContentExtractor
+    {
+        public ExtractedPageContent Extract(string html, Uri finalUri) =>
+            new(title, description, null, null, "body");
     }
 
     private sealed class Repository(Content content) : IExternalFetchRepository

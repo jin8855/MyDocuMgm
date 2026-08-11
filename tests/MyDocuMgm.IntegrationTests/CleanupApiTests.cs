@@ -90,6 +90,7 @@ public sealed class CleanupApiTests
                 [new TrashContentItem(Content.Id, Content.Title, DateTime.UtcNow, OwnedMediaCount, Convert.ToBase64String(Content.RowVersion))]);
         public Task<Content?> FindContentAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(Content);
         public Task<int> CountOwnedMediaAsync(Guid contentId, CancellationToken cancellationToken) => Task.FromResult(OwnedMediaCount);
+        public Task RemoveSourceEvidenceAsync(Guid contentId, CancellationToken cancellationToken) => Task.CompletedTask;
         public void RemoveContent(Content content) => ContentRemoved = true;
         public Task<IReadOnlyList<CleanupMediaCandidate>> ListOrphanMediaAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CleanupMediaCandidate>>(Candidate is null ? [] : [Candidate]);

@@ -47,8 +47,12 @@ public sealed class ExternalFetchService(
                 page.ContentSha256,
                 page.ETag,
                 page.LastModifiedAtUtc,
-                Limit(extracted.Title, 300),
-                Limit(extracted.Description, 2_000),
+                ExternalFetchMetadataLimits.NormalizeGenerated(
+                    extracted.Title,
+                    ExternalFetchMetadataLimits.TitleMaxLength),
+                ExternalFetchMetadataLimits.NormalizeGenerated(
+                    extracted.Description,
+                    ExternalFetchMetadataLimits.DescriptionMaxLength),
                 Limit(extracted.AuthorName, 300),
                 extracted.PublishedAtUtc,
                 body);
@@ -94,13 +98,13 @@ public sealed class ExternalFetchService(
         return ExternalFetchMappings.ToDto(attempt);
     }
 
-    public async Task<ExternalFetchAttemptDto> GetLatestAsync(
+    public async Task<ExternalFetchAttemptDto?> GetLatestAsync(
         Guid contentId,
         CancellationToken cancellationToken)
     {
-        var attempt = await repository.FindLatestAttemptAsync(contentId, cancellationToken)
-            ?? throw new NotFoundException("가져오기 기록을 찾을 수 없습니다.");
-        return ExternalFetchMappings.ToDto(attempt);
+        await FindContentAsync(contentId, cancellationToken);
+        var attempt = await repository.FindLatestAttemptAsync(contentId, cancellationToken);
+        return attempt is null ? null : ExternalFetchMappings.ToDto(attempt);
     }
 
     public async Task<ExternalFetchApplyDto> ApplyAsync(
@@ -126,7 +130,9 @@ public sealed class ExternalFetchService(
                     ContentId = content.Id,
                     Content = content,
                     SourceType = "PUBLIC_HTML",
-                    SourceTitle = Limit(request.Title, 300),
+                    SourceTitle = ExternalFetchMetadataLimits.NormalizeGenerated(
+                        request.Title,
+                        ExternalFetchMetadataLimits.TitleMaxLength),
                     SourceReference = Limit(attempt.FinalUrl, 2_000),
                     CapturedAtUtc = attempt.CompletedAtUtc ?? timeProvider.GetUtcNow().UtcDateTime
                 },

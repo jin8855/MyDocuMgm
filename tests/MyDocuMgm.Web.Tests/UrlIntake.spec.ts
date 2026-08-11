@@ -33,6 +33,19 @@ async function submitUrl(host: HTMLElement, url: string) {
 }
 
 describe('Phase 2A URL intake web contract', () => {
+  it('loads an existing generic intake with no fetch attempt as an explicit empty state', async () => {
+    const intake = await api.createUrlIntake(`https://example.com/empty-${crypto.randomUUID()}`)
+    const { host, app } = mountStage(intake.id, false)
+
+    await flush()
+    await flush()
+
+    expect(await api.latestExternalFetch(intake.id)).toBeUndefined()
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(host.textContent).toContain('미리보기 가져오기')
+    app.unmount()
+  })
+
   it('shows invalid URL validation and supports retry', async () => {
     const { host, app } = mountStage()
 
@@ -330,13 +343,13 @@ describe('Phase 2A URL intake web contract', () => {
     fetchButton.click()
     await flush()
     await flush()
-    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id)).attemptNumber).toBe(3)
+    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id))!.attemptNumber).toBe(3)
 
     fetchButton.click()
     await flush()
     await flush()
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('최대 3회')
-    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id)).attemptNumber).toBe(3)
+    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id))!.attemptNumber).toBe(3)
     expect(host.querySelector<HTMLTextAreaElement>('#manual-body')?.value).toBe('보존할 수동 입력')
 
     host.querySelector<HTMLButtonElement>('[data-testid="external-fetch-apply"]')!.click()

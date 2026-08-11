@@ -363,12 +363,12 @@ export const api = {
       }
       return cloneValue(attempt)
   },
-  async latestExternalFetch(contentId: string): Promise<ExternalFetchAttempt> {
+  async latestExternalFetch(contentId: string): Promise<ExternalFetchAttempt | undefined> {
     if (!mockEnabled) {
       return request('/api/url-intakes/' + encodeURIComponent(contentId) + '/external-fetches/latest')
     }
     const attempt = externalFetchAttempts.get(contentId)?.at(-1)
-    if (!attempt) throw new ApiError('NOT_FOUND', '가져오기 기록을 찾을 수 없습니다.')
+    if (!attempt) return undefined
     return cloneValue(attempt)
   },
   async applyExternalFetch(

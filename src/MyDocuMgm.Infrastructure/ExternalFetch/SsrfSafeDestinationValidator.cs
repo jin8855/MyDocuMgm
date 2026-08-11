@@ -17,6 +17,40 @@ public sealed class SystemDnsResolver : IDnsResolver
 
 public sealed class SsrfSafeDestinationValidator(IDnsResolver dnsResolver)
 {
+    // IANA IPv6 Special-Purpose Address Registry snapshot reviewed 2026-08-11:
+    // https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry-1.csv
+    // Longest-prefix evaluation is required because 2001::/23 contains explicitly
+    // globally reachable exceptions. Transition mechanisms are intentionally denied.
+    private static readonly Ipv6PolicyPrefix[] IanaSpecialPurposeIpv6Prefixes =
+    new Ipv6PolicyPrefix[]
+    {
+        Prefix("::1", 128, false),
+        Prefix("::", 128, false),
+        Prefix("::ffff:0:0", 96, false),
+        Prefix("64:ff9b::", 96, true),
+        Prefix("64:ff9b:1::", 48, false),
+        Prefix("100::", 64, false),
+        Prefix("100:0:0:1::", 64, false),
+        Prefix("2001::", 23, false),
+        Prefix("2001::", 32, false),
+        Prefix("2001:1::1", 128, true),
+        Prefix("2001:1::2", 128, true),
+        Prefix("2001:1::3", 128, true),
+        Prefix("2001:2::", 48, false),
+        Prefix("2001:3::", 32, true),
+        Prefix("2001:4:112::", 48, true),
+        Prefix("2001:10::", 28, false),
+        Prefix("2001:20::", 28, true),
+        Prefix("2001:30::", 28, true),
+        Prefix("2001:db8::", 32, false),
+        Prefix("2002::", 16, false),
+        Prefix("2620:4f:8000::", 48, true),
+        Prefix("3fff::", 20, false),
+        Prefix("5f00::", 16, false),
+        Prefix("fc00::", 7, false),
+        Prefix("fe80::", 10, false),
+    }.OrderByDescending(value => value.PrefixLength).ToArray();
+
     public async Task<IReadOnlyList<IPAddress>> ValidateAsync(
         Uri uri,
         CancellationToken cancellationToken)
@@ -161,12 +195,27 @@ public sealed class SsrfSafeDestinationValidator(IDnsResolver dnsResolver)
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            return !(
-                address.IsIPv6LinkLocal ||
-                address.IsIPv6Multicast ||
-                address.IsIPv6SiteLocal ||
-                (bytes[0] & 0xFE) == 0xFC ||
-                (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8));
+            if (address.IsIPv6Multicast || address.IsIPv6LinkLocal || address.IsIPv6SiteLocal)
+            {
+                return false;
+            }
+
+            // RFC 6052 well-known NAT64 embeds an IPv4 destination in the final 32 bits.
+            // It is only acceptable when that embedded destination passes the IPv4 policy.
+            if (Contains(bytes, IPAddress.Parse("64:ff9b::").GetAddressBytes(), 96))
+            {
+                return IsPublic(new IPAddress(bytes[12..]));
+            }
+
+            foreach (var prefix in IanaSpecialPurposeIpv6Prefixes)
+            {
+                if (Contains(bytes, prefix.Network, prefix.PrefixLength))
+                {
+                    return prefix.GloballyReachable;
+                }
+            }
+
+            return true;
         }
 
         return false;
@@ -174,4 +223,26 @@ public sealed class SsrfSafeDestinationValidator(IDnsResolver dnsResolver)
 
     private static ExternalFetchException Policy(string code, string message) =>
         new(code, message, ExternalFetchFailureKind.POLICY);
+
+    private static Ipv6PolicyPrefix Prefix(string address, int prefixLength, bool globallyReachable) =>
+        new(IPAddress.Parse(address).GetAddressBytes(), prefixLength, globallyReachable);
+
+    private static bool Contains(byte[] address, byte[] network, int prefixLength)
+    {
+        var wholeBytes = prefixLength / 8;
+        var remainingBits = prefixLength % 8;
+        for (var index = 0; index < wholeBytes; index++)
+        {
+            if (address[index] != network[index]) return false;
+        }
+
+        if (remainingBits == 0) return true;
+        var mask = (byte)(0xFF << (8 - remainingBits));
+        return (address[wholeBytes] & mask) == (network[wholeBytes] & mask);
+    }
+
+    private readonly record struct Ipv6PolicyPrefix(
+        byte[] Network,
+        int PrefixLength,
+        bool GloballyReachable);
 }

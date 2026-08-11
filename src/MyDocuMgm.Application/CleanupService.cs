@@ -52,6 +52,7 @@ public sealed class CleanupService(
                 "소유 미디어를 먼저 영구 삭제해야 콘텐츠를 영구 삭제할 수 있습니다.");
         }
 
+        await repository.RemoveSourceEvidenceAsync(contentId, cancellationToken);
         repository.RemoveContent(content);
         await repository.SaveChangesAsync(cancellationToken);
     }

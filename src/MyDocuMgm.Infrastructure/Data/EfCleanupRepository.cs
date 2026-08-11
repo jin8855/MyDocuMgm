@@ -27,6 +27,14 @@ public sealed class EfCleanupRepository(MyDocuMgmDbContext dbContext) : ICleanup
         dbContext.MediaAssets.IgnoreQueryFilters()
             .CountAsync(media => media.ContentId == contentId, cancellationToken);
 
+    public async Task RemoveSourceEvidenceAsync(Guid contentId, CancellationToken cancellationToken)
+    {
+        var evidence = await dbContext.SourceEvidence
+            .Where(value => value.ContentId == contentId)
+            .ToListAsync(cancellationToken);
+        dbContext.SourceEvidence.RemoveRange(evidence);
+    }
+
     public void RemoveContent(Content content) => dbContext.Contents.Remove(content);
 
     public async Task<IReadOnlyList<CleanupMediaCandidate>> ListOrphanMediaAsync(

@@ -20,10 +20,13 @@ public sealed class ExternalUrlFetchController(ExternalFetchService service) : C
     }
 
     [HttpGet("latest")]
-    public Task<ExternalFetchAttemptDto> Latest(
+    public async Task<ActionResult<ExternalFetchAttemptDto>> Latest(
         Guid contentId,
-        CancellationToken cancellationToken) =>
-        service.GetLatestAsync(contentId, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var result = await service.GetLatestAsync(contentId, cancellationToken);
+        return result is null ? NoContent() : Ok(result);
+    }
 
     [HttpGet("{attemptId:guid}")]
     public Task<ExternalFetchAttemptDto> Get(
