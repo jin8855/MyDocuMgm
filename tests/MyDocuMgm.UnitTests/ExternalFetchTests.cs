@@ -17,6 +17,35 @@ namespace MyDocuMgm.UnitTests;
 
 public sealed class ExternalFetchTests
 {
+    private static readonly Ipv6PolicyRow[] IanaIpv6Policy =
+    [
+        new("::1", 128, false),
+        new("::", 128, false),
+        new("::ffff:0:0", 96, false),
+        new("64:ff9b::", 96, true),
+        new("64:ff9b:1::", 48, false),
+        new("100::", 64, false),
+        new("100:0:0:1::", 64, false),
+        new("2001::", 23, false),
+        new("2001::", 32, false),
+        new("2001:1::1", 128, true),
+        new("2001:1::2", 128, true),
+        new("2001:1::3", 128, true),
+        new("2001:2::", 48, false),
+        new("2001:3::", 32, true),
+        new("2001:4:112::", 48, true),
+        new("2001:10::", 28, false),
+        new("2001:20::", 28, true),
+        new("2001:30::", 28, true),
+        new("2001:db8::", 32, false),
+        new("2002::", 16, false),
+        new("2620:4f:8000::", 48, true),
+        new("3fff::", 20, false),
+        new("5f00::", 16, false),
+        new("fc00::", 7, false),
+        new("fe80::", 10, false),
+    ];
+
     [Theory]
     [InlineData("127.0.0.1", false)]
     [InlineData("10.0.0.1", false)]
@@ -33,6 +62,7 @@ public sealed class ExternalFetchTests
     [
         ["::"],
         ["::1"],
+        ["::ffff:0.0.0.0"],
         ["64:ff9b:1::"],
         ["100::"],
         ["100:0:0:1::"],
@@ -48,42 +78,29 @@ public sealed class ExternalFetchTests
         ["fe80::"]
     ];
 
-    public static IEnumerable<object[]> NewlyBlockedIpv6BoundaryPoints
+    public static IEnumerable<object?[]> CompleteIpv6PolicyBoundaryPoints
     {
         get
         {
-            var prefixes = new (string Network, int Length, bool BeforePublic, bool AfterPublic)[]
-            {
-                ("64:ff9b:1::", 48, true, true),
-                ("100::", 64, true, false),
-                ("100:0:0:1::", 64, false, true),
-                ("2001::", 23, true, true),
-                ("2001::", 32, true, false),
-                ("2001:2::", 48, false, false),
-                ("2001:10::", 28, false, true),
-                ("2001:db8::", 32, true, true),
-                ("2002::", 16, true, true),
-                ("3fff::", 20, true, true),
-                ("5f00::", 16, true, true),
-            };
-
-            foreach (var (network, length, beforePublic, afterPublic) in prefixes)
+            foreach (var row in IanaIpv6Policy)
             {
                 var value = new BigInteger(
-                    IPAddress.Parse(network).GetAddressBytes(),
+                    IPAddress.Parse(row.Network).GetAddressBytes(),
                     isUnsigned: true,
                     isBigEndian: true);
-                var hostBits = 128 - length;
+                var hostBits = 128 - row.PrefixLength;
                 var first = (value >> hostBits) << hostBits;
                 var last = first + (BigInteger.One << hostBits) - BigInteger.One;
                 var middle = first + ((last - first) / 2);
 
-                var prefix = $"{network}/{length}";
-                yield return [prefix, "first", Ipv6(first), false];
-                yield return [prefix, "middle", Ipv6(middle), false];
-                yield return [prefix, "last", Ipv6(last), false];
-                yield return [prefix, "before", Ipv6(first - BigInteger.One), beforePublic];
-                yield return [prefix, "after", Ipv6(last + BigInteger.One), afterPublic];
+                var prefix = $"{row.Network}/{row.PrefixLength}";
+                yield return Boundary(prefix, "first", first);
+                yield return Boundary(prefix, "middle", middle);
+                yield return Boundary(prefix, "last", last);
+                yield return first == BigInteger.Zero
+                    ? [prefix, "before", null, null]
+                    : Boundary(prefix, "before", first - BigInteger.One);
+                yield return Boundary(prefix, "after", last + BigInteger.One);
             }
         }
     }
@@ -96,16 +113,56 @@ public sealed class ExternalFetchTests
     }
 
     [Theory]
-    [MemberData(nameof(NewlyBlockedIpv6BoundaryPoints))]
-    public void PublicAddressPolicy_EnforcesEveryNewIpv6CidrBoundary(
+    [MemberData(nameof(CompleteIpv6PolicyBoundaryPoints))]
+    public void PublicAddressPolicy_EnforcesEveryIanaIpv6CidrBoundary(
         string prefix,
         string point,
-        string value,
-        bool expected)
+        string? value,
+        bool? expected)
     {
-        _ = prefix;
-        _ = point;
+        if (value is null)
+        {
+            Assert.Equal("::/128", prefix);
+            Assert.Equal("before", point);
+            Assert.Null(expected);
+            return;
+        }
+
         Assert.Equal(expected, SsrfSafeDestinationValidator.IsPublic(IPAddress.Parse(value)));
+    }
+
+    [Fact]
+    public void PublicAddressPolicy_BoundaryMatrixLinksEveryPolicyRowToFivePoints()
+    {
+        var cases = CompleteIpv6PolicyBoundaryPoints.ToArray();
+
+        Assert.Equal(IanaIpv6Policy.Length * 5, cases.Length);
+        Assert.Equal(
+            IanaIpv6Policy.Select(row => $"{row.Network}/{row.PrefixLength}").Order(),
+            cases.GroupBy(row => Assert.IsType<string>(row[0]))
+                .Select(group =>
+                {
+                    Assert.Equal(5, group.Count());
+                    Assert.Equal(
+                        ["after", "before", "first", "last", "middle"],
+                        group.Select(item => Assert.IsType<string>(item[1])).Order().ToArray());
+                    return group.Key;
+                })
+                .Order());
+    }
+
+    [Fact]
+    public void PublicAddressPolicy_ReferenceResultIsIndependentOfPolicyDeclarationOrder()
+    {
+        var reversed = IanaIpv6Policy.Reverse().ToArray();
+
+        foreach (var row in CompleteIpv6PolicyBoundaryPoints.Where(row => row[2] is not null))
+        {
+            var address = IPAddress.Parse(Assert.IsType<string>(row[2]));
+            Assert.Equal(
+                ExpectedPublicByReferencePolicy(address, IanaIpv6Policy),
+                ExpectedPublicByReferencePolicy(address, reversed));
+        }
     }
 
     [Theory]
@@ -184,12 +241,17 @@ public sealed class ExternalFetchTests
         Assert.Equal(code, error.Code);
     }
 
-    [Fact]
-    public async Task DestinationPolicy_RejectsMixedPublicAndPrivateDnsAnswers()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DestinationPolicy_RejectsMixedPublicAndPrivateDnsAnswersRegardlessOfOrder(
+        bool privateAddressFirst)
     {
-        var validator = new SsrfSafeDestinationValidator(new DnsResolver(
-            IPAddress.Parse("8.8.8.8"),
-            IPAddress.Parse("10.0.0.2")));
+        var publicAddress = IPAddress.Parse("8.8.8.8");
+        var privateAddress = IPAddress.Parse("10.0.0.2");
+        var validator = new SsrfSafeDestinationValidator(new DnsResolver(privateAddressFirst
+            ? [privateAddress, publicAddress]
+            : [publicAddress, privateAddress]));
 
         var error = await Assert.ThrowsAsync<ExternalFetchException>(
             () => validator.ValidateAsync(new Uri("https://example.test/path"), default));
@@ -204,6 +266,95 @@ public sealed class ExternalFetchTests
         unpadded.CopyTo(bytes, bytes.Length - unpadded.Length);
         return new IPAddress(bytes).ToString();
     }
+
+    private static object?[] Boundary(string prefix, string point, BigInteger value)
+    {
+        var address = Ipv6(value);
+        return
+        [
+            prefix,
+            point,
+            address,
+            ExpectedPublicByReferencePolicy(IPAddress.Parse(address), IanaIpv6Policy)
+        ];
+    }
+
+    private static bool ExpectedPublicByReferencePolicy(
+        IPAddress address,
+        IReadOnlyCollection<Ipv6PolicyRow> policy)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            return ExpectedPublicIpv4(address.MapToIPv4());
+        }
+
+        if (IPAddress.IsLoopback(address) ||
+            address.Equals(IPAddress.IPv6Any) ||
+            address.Equals(IPAddress.IPv6None) ||
+            address.IsIPv6Multicast ||
+            address.IsIPv6LinkLocal ||
+            address.IsIPv6SiteLocal)
+        {
+            return false;
+        }
+
+        var bytes = address.GetAddressBytes();
+        if (Contains(bytes, IPAddress.Parse("64:ff9b::").GetAddressBytes(), 96))
+        {
+            return ExpectedPublicIpv4(new IPAddress(bytes[12..]));
+        }
+
+        var match = policy
+            .Where(row => Contains(bytes, IPAddress.Parse(row.Network).GetAddressBytes(), row.PrefixLength))
+            .OrderByDescending(row => row.PrefixLength)
+            .FirstOrDefault();
+        return match is null || match.GloballyReachable;
+    }
+
+    private static bool ExpectedPublicIpv4(IPAddress address)
+    {
+        var bytes = address.GetAddressBytes();
+        return !(
+            bytes[0] == 0 ||
+            bytes[0] == 10 ||
+            bytes[0] == 127 ||
+            (bytes[0] == 100 && bytes[1] is >= 64 and <= 127) ||
+            (bytes[0] == 169 && bytes[1] == 254) ||
+            (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
+            (bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 0) ||
+            (bytes[0] == 192 && bytes[1] == 0 && bytes[2] == 2) ||
+            (bytes[0] == 192 && bytes[1] == 168) ||
+            (bytes[0] == 198 && bytes[1] is 18 or 19) ||
+            (bytes[0] == 198 && bytes[1] == 51 && bytes[2] == 100) ||
+            (bytes[0] == 203 && bytes[1] == 0 && bytes[2] == 113) ||
+            bytes[0] >= 224);
+    }
+
+    private static bool Contains(byte[] address, byte[] network, int prefixLength)
+    {
+        var wholeBytes = prefixLength / 8;
+        var remainingBits = prefixLength % 8;
+        for (var index = 0; index < wholeBytes; index++)
+        {
+            if (address[index] != network[index])
+            {
+                return false;
+            }
+        }
+
+        if (remainingBits == 0)
+        {
+            return true;
+        }
+
+        var mask = (byte)(0xFF << (8 - remainingBits));
+        return (address[wholeBytes] & mask) == (network[wholeBytes] & mask);
+    }
+
+    private sealed record Ipv6PolicyRow(
+        string Network,
+        int PrefixLength,
+        bool GloballyReachable);
 
     [Fact]
     public async Task DestinationPolicy_RejectsMixedPublicAndSpecialIpv6DnsAnswers()
