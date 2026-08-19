@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import LocalMediaLinkPicker from '../url-intake/LocalMediaLinkPicker.vue'
+import ExternalFetchPreview from '../url-intake/ExternalFetchPreview.vue'
 import MediaUploadPanel from '../media-management/MediaUploadPanel.vue'
 import { useMediaState } from '../media-management/useMediaState'
 import { ApiError, api } from '../../shared/api/client'
-import type { LinkableMediaPage, PinnedAuthorCommentState, UrlIntake } from '../../shared/types'
+import type { ExternalFetchAttempt, LinkableMediaPage, PinnedAuthorCommentState, UrlIntake } from '../../shared/types'
 
 const props = defineProps<{ contentId: string; newWork?: boolean }>()
 const emit = defineEmits<{ dirty: []; saved: []; accepted: [contentId: string] }>()
@@ -17,6 +18,9 @@ const manualCaption = ref('')
 const pinnedCommentState = ref<PinnedAuthorCommentState>('NONE')
 const pinnedCommentText = ref('')
 const busy = ref(false)
+const fetchBusy = ref(false)
+const fetchError = ref('')
+const fetchAttempt = ref<ExternalFetchAttempt>()
 const loading = ref(false)
 const error = ref('')
 const errorScope = ref<'url' | 'manual' | 'media' | 'load'>('url')
@@ -62,6 +66,9 @@ async function load() {
   pinnedCommentState.value = 'NONE'
   pinnedCommentText.value = ''
   mediaState.reset()
+  fetchAttempt.value = undefined
+  fetchError.value = ''
+  fetchBusy.value = false
   error.value = ''
   notice.value = ''
   selectedMediaIds.value = new Set()
@@ -72,6 +79,15 @@ async function load() {
   try {
     const value = await api.urlIntake(props.contentId)
     applyIntake(value)
+    if (value.sourceKind === 'GENERIC') {
+      try {
+        fetchAttempt.value = await api.latestExternalFetch(value.id)
+      } catch (latestError) {
+        if (!(latestError instanceof ApiError) || latestError.code !== 'NOT_FOUND') {
+          throw latestError
+        }
+      }
+    }
     await loadLibrary()
   } catch (errorValue) {
     errorScope.value = 'load'
@@ -87,11 +103,25 @@ async function submitUrl() {
   notice.value = ''
   busy.value = true
   try {
-    const value = await api.createInstagramIntake(url.value)
+    let instagram = false
+    try {
+      const parsed = new URL(url.value)
+      instagram = ['instagram.com', 'www.instagram.com'].includes(parsed.hostname.toLowerCase())
+    } catch {
+      // The API/client normalizer returns the user-facing URL validation error.
+    }
+    const value = instagram
+      ? await api.createInstagramIntake(url.value)
+      : await api.createUrlIntake(url.value)
     applyIntake(value)
     notice.value = value.isDuplicate
       ? '이미 등록된 URL입니다. 기존 작업을 불러왔습니다.'
       : 'URL을 저장했습니다. 외부 수집은 실행하지 않고 수집 대기 상태로 보관합니다.'
+    if (!value.isDuplicate) {
+      notice.value = value.sourceKind === 'GENERIC'
+        ? 'URL을 저장했습니다. 텍스트 미리보기를 실행한 뒤 적용 여부를 선택해 주세요.'
+        : 'URL을 저장했습니다. Instagram 자료는 계속 수동으로 입력합니다.'
+    }
     await loadLibrary()
     emit('saved')
     if (value.id !== props.contentId) emit('accepted', value.id)
@@ -100,6 +130,47 @@ async function submitUrl() {
     error.value = message(errorValue)
   } finally {
     busy.value = false
+  }
+}
+
+async function startExternalFetch() {
+  if (!intake.value || fetchBusy.value) return
+  fetchError.value = ''
+  fetchBusy.value = true
+  try {
+    fetchAttempt.value = await api.startExternalFetch(intake.value.id)
+  } catch (errorValue) {
+    fetchError.value = message(errorValue)
+    try {
+      fetchAttempt.value = await api.latestExternalFetch(intake.value.id)
+    } catch {
+      // The primary error remains visible even when no attempt record is available.
+    }
+  } finally {
+    fetchBusy.value = false
+  }
+}
+
+async function applyExternalFetch(value: { title: string; description: string; body: string }) {
+  if (!intake.value || !fetchAttempt.value || fetchBusy.value) return
+  fetchError.value = ''
+  fetchBusy.value = true
+  try {
+    const result = await api.applyExternalFetch(
+      intake.value.id,
+      fetchAttempt.value.id,
+      value.title,
+      value.description,
+      value.body,
+    )
+    fetchAttempt.value = result.attempt
+    applyIntake(result.intake)
+    notice.value = '미리보기를 현재 자료에 적용했습니다.'
+    emit('saved')
+  } catch (errorValue) {
+    fetchError.value = message(errorValue)
+  } finally {
+    fetchBusy.value = false
   }
 }
 
@@ -231,14 +302,14 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
   <section class="surface form-stack url-intake" aria-labelledby="url-intake-title">
     <div class="section-title">
       <div>
-        <h2 id="url-intake-title">Instagram 수동 등록</h2>
-        <p>게시물·Reel 주소와 사용자가 직접 확인한 내용만 저장합니다. 외부 사이트 접속이나 자동 수집은 실행하지 않습니다.</p>
+        <h2 id="url-intake-title">URL 자료 등록</h2>
+        <p>일반 공개 웹페이지는 텍스트 미리보기를 제공하며, Instagram은 수동 입력만 지원합니다.</p>
       </div>
       <span v-if="intake" class="status-badge">{{ statusLabel }}</span>
     </div>
 
     <form class="url-intake-form" @submit.prevent="submitUrl">
-      <label for="source-url">Instagram 게시물/Reel URL</label>
+      <label for="source-url">공개 HTTP(S) URL</label>
       <div class="url-intake-row">
         <input
           id="source-url"
@@ -249,14 +320,14 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
           :disabled="busy || loading"
           :aria-invalid="Boolean(error) && errorScope === 'url'"
           :aria-describedby="error && errorScope === 'url' ? 'url-intake-help url-intake-error' : 'url-intake-help'"
-          placeholder="https://www.instagram.com/p/shortcode/"
+          placeholder="https://example.com/article"
           @input="emit('dirty')"
         >
         <button class="button primary" type="submit" :disabled="busy || loading">
           {{ busy ? '저장 중…' : 'URL 추가' }}
         </button>
       </div>
-      <small id="url-intake-help">instagram.com의 게시물(p)·Reel(reel) permalink만 허용합니다. query·fragment는 제거하며 URL 존재 여부는 확인하지 않습니다.</small>
+      <small id="url-intake-help">일반 URL은 80/443 포트만 허용하고 적용 전 미리보기를 표시합니다. Instagram 게시물·Reel은 기존 수동 입력을 유지합니다.</small>
     </form>
 
     <p v-if="loading" class="muted" role="status">저장된 URL 상태를 불러오는 중입니다.</p>
@@ -352,6 +423,17 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
         </button>
       </div>
     </div>
+
+    <ExternalFetchPreview
+      v-if="intake?.sourceKind === 'GENERIC'"
+      :attempt="fetchAttempt"
+      :busy="fetchBusy"
+      :error="fetchError"
+      @fetch="startExternalFetch"
+      @apply="applyExternalFetch"
+      @manual="beginManualInput"
+      @dirty="emit('dirty')"
+    />
 
     <div v-if="intake && intake.sourceKind !== 'INSTAGRAM'" class="manual-body-panel">
       <div class="section-title compact">

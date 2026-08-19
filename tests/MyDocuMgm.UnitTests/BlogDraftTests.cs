@@ -267,6 +267,50 @@ public sealed class BlogDraftTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetAsync(Guid.NewGuid(), default));
     }
 
+    [Fact]
+    public async Task ExternalFetchedBody_RequiresExplicitReuseConfirmationBeforeDraftSave()
+    {
+        var content = CreateContent();
+        content.SourceAcquisitionMode = SourceAcquisitionMode.HTTP_METADATA;
+        content.ExternalContentBlogReuseConfirmedAtUtc = null;
+        var repository = new Repository(content);
+        var service = new BlogDraftService(repository);
+
+        var initial = await service.GetAsync(content.Id, default);
+        Assert.True(initial.RequiresExternalSourceReuseConfirmation);
+        Assert.False(initial.ExternalSourceReuseConfirmed);
+
+        var error = await Assert.ThrowsAsync<DomainRuleException>(() => service.SaveAsync(
+            content.Id,
+            new SaveBlogDraftRequest
+            {
+                Title = "외부 본문 초안",
+                Body = "재사용할 본문",
+                ContentRowVersion = RowVersion(content)
+            },
+            default));
+
+        Assert.Equal("BLOG_DRAFT_SOURCE_REUSE_CONFIRMATION_REQUIRED", error.Code);
+        Assert.Null(content.BlogDraft);
+        Assert.Null(content.ExternalContentBlogReuseConfirmedAtUtc);
+        Assert.Equal(0, repository.SaveCount);
+
+        var saved = await service.SaveAsync(
+            content.Id,
+            new SaveBlogDraftRequest
+            {
+                Title = "외부 본문 초안",
+                Body = "재사용할 본문",
+                ConfirmExternalSourceReuse = true,
+                ContentRowVersion = RowVersion(content)
+            },
+            default);
+
+        Assert.True(saved.ExternalSourceReuseConfirmed);
+        Assert.NotNull(content.ExternalContentBlogReuseConfirmedAtUtc);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
     private static Content CreateContent(WorkflowStep step = WorkflowStep.BLOG_DRAFT) => new()
     {
         CategoryId = CategoryCatalog.All.Single(category => category.Code == "OTHER").Id,

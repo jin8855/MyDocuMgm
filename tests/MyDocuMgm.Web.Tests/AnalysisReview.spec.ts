@@ -1,6 +1,8 @@
 import { createApp, nextTick } from 'vue'
 import { router } from '../../src/MyDocuMgm.Web/src/app/router'
+import AnalysisReviewStage from '../../src/MyDocuMgm.Web/src/features/analysis-review/AnalysisReviewStage.vue'
 import { api } from '../../src/MyDocuMgm.Web/src/shared/api/client'
+import type { UrlIntake } from '../../src/MyDocuMgm.Web/src/shared/types'
 
 async function flush() {
   await Promise.resolve()
@@ -125,6 +127,70 @@ describe('Phase 2B manual analysis review', () => {
       .toContain('수동 Instagram 접수를 완료한 뒤')
     expect((await api.content(intake.id)).currentWorkflowStep).toBe('URL')
     expect(router.currentRoute.value.path).toBe(`/workflow/${intake.id}/analysis-review`)
+    app.unmount()
+  })
+
+  it.each([
+    {
+      name: 'generic HTTP metadata',
+      sourceKind: 'GENERIC' as const,
+      sourceAcquisitionMode: 'HTTP_METADATA' as const,
+      instagramContentType: null,
+      expectedType: '일반 웹 자료',
+      expectedMode: 'URL 자동 수집',
+      expectedGuide: '웹페이지에서 가져온 제목과 설명을 검토하고 필요한 내용을 수정하세요.',
+      rejects: ['Instagram 게시물', 'Instagram 릴스', '수동 입력'],
+    },
+    {
+      name: 'manual Instagram post',
+      sourceKind: 'INSTAGRAM' as const,
+      sourceAcquisitionMode: 'MANUAL' as const,
+      instagramContentType: 'POST' as const,
+      expectedType: 'Instagram 게시물',
+      expectedMode: '수동 입력',
+      expectedGuide: 'AI 분석이나 외부 수집 없이 사용자가 입력한 자료만 표시합니다.',
+      rejects: ['일반 웹 자료', 'URL 자동 수집'],
+    },
+    {
+      name: 'unknown source',
+      sourceKind: 'GENERIC' as const,
+      sourceAcquisitionMode: null,
+      instagramContentType: null,
+      expectedType: '기타 자료',
+      expectedMode: '확인 필요',
+      expectedGuide: '자료 출처와 입력 방식을 확인하고 필요한 내용을 수정하세요.',
+      rejects: ['Instagram 게시물', 'Instagram 릴스', 'URL 자동 수집'],
+    },
+  ])('uses source-neutral presentation labels for $name', async scenario => {
+    const intake: UrlIntake = {
+      id: crypto.randomUUID(),
+      originalUrl: 'https://example.test/article',
+      normalizedUrl: 'https://example.test/article',
+      sourceKind: scenario.sourceKind,
+      status: 'CONTENT_READY',
+      isDuplicate: false,
+      manualBody: null,
+      manualBodyPresent: false,
+      instagramContentType: scenario.instagramContentType,
+      manualCaption: scenario.sourceKind === 'INSTAGRAM' ? 'manual caption' : null,
+      pinnedAuthorCommentState: null,
+      pinnedAuthorCommentText: null,
+      sourceAcquisitionMode: scenario.sourceAcquisitionMode,
+      linkedMediaIds: [],
+    }
+    const host = document.createElement('div')
+    const app = createApp(AnalysisReviewStage, {
+      title: '검토 제목',
+      shortSummary: '검토 요약',
+      intake,
+    })
+    app.mount(host)
+
+    expect(host.textContent).toContain(scenario.expectedType)
+    expect(host.textContent).toContain(scenario.expectedMode)
+    expect(host.textContent).toContain(scenario.expectedGuide)
+    for (const rejected of scenario.rejects) expect(host.textContent).not.toContain(rejected)
+
     app.unmount()
   })
 })

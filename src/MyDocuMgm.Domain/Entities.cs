@@ -55,6 +55,7 @@ public sealed class Content
     public string? PinnedAuthorCommentText { get; set; }
     public SourceAcquisitionMode? SourceAcquisitionMode { get; set; }
     public IntakeStatus? IntakeStatus { get; set; }
+    public DateTime? ExternalContentBlogReuseConfirmedAtUtc { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
@@ -67,6 +68,7 @@ public sealed class Content
     public ICollection<MediaAsset> MediaAssets { get; set; } = [];
     public ICollection<ContentMediaLink> LinkedMedia { get; set; } = [];
     public ICollection<SourceEvidence> SourceEvidence { get; set; } = [];
+    public ICollection<ExternalFetchAttempt> ExternalFetchAttempts { get; set; } = [];
     public PlaceDetails? PlaceDetails { get; set; }
     public CookingDetails? CookingDetails { get; set; }
     public ExerciseDetails? ExerciseDetails { get; set; }
@@ -213,8 +215,78 @@ public sealed class Content
         }
 
         DetailContent = trimmedBody;
+        SourceAcquisitionMode = global::MyDocuMgm.Domain.SourceAcquisitionMode.MANUAL;
         IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.CONTENT_READY;
+        ExternalContentBlogReuseConfirmedAtUtc = null;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ApplyExternalFetch(string? title, string? description, string body)
+    {
+        if (SourceKind != ContentSourceKind.GENERIC)
+        {
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_GENERIC_URL_REQUIRED",
+                "일반 URL 콘텐츠에만 외부 가져오기 결과를 적용할 수 있습니다.");
+        }
+
+        if (CurrentWorkflowStep != WorkflowStep.URL)
+        {
+            throw new DomainRuleException(
+                "URL_STAGE_ALREADY_COMPLETED",
+                "URL intake data cannot be changed after the workflow leaves the URL stage.");
+        }
+
+        var trimmedBody = body?.Trim() ?? string.Empty;
+        if (trimmedBody.Length == 0)
+        {
+            throw new DomainRuleException("EXTERNAL_FETCH_BODY_REQUIRED", "적용할 본문을 입력해 주세요.");
+        }
+
+        if (trimmedBody.Length > ManualBodyMaxLength)
+        {
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_BODY_TOO_LONG",
+                $"적용할 본문은 {ManualBodyMaxLength:N0}자 이하여야 합니다.");
+        }
+
+        var trimmedTitle = title?.Trim();
+        if (trimmedTitle?.Length > ExternalFetchMetadataLimits.TitleMaxLength)
+        {
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_TITLE_TOO_LONG",
+                $"제목은 {ExternalFetchMetadataLimits.TitleMaxLength}자 이하여야 합니다.");
+        }
+
+        var trimmedDescription = description?.Trim();
+        if (trimmedDescription?.Length > ExternalFetchMetadataLimits.DescriptionMaxLength)
+        {
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_DESCRIPTION_TOO_LONG",
+                $"요약은 {ExternalFetchMetadataLimits.DescriptionMaxLength}자 이하여야 합니다.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(trimmedTitle))
+        {
+            Title = trimmedTitle;
+        }
+
+        ShortSummary = string.IsNullOrWhiteSpace(trimmedDescription) ? null : trimmedDescription;
+        DetailContent = trimmedBody;
+        SourceAcquisitionMode = global::MyDocuMgm.Domain.SourceAcquisitionMode.HTTP_METADATA;
+        IntakeStatus = global::MyDocuMgm.Domain.IntakeStatus.CONTENT_READY;
+        ExternalContentBlogReuseConfirmedAtUtc = null;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ConfirmExternalContentBlogReuse()
+    {
+        if (SourceAcquisitionMode == global::MyDocuMgm.Domain.SourceAcquisitionMode.HTTP_METADATA &&
+            ExternalContentBlogReuseConfirmedAtUtc is null)
+        {
+            ExternalContentBlogReuseConfirmedAtUtc = DateTime.UtcNow;
+            UpdatedAtUtc = DateTime.UtcNow;
+        }
     }
 
     public void ChangeCategory(Guid categoryId)
@@ -369,6 +441,122 @@ public sealed class SourceEvidence
     public string? SourceReference { get; set; }
     public DateTime CapturedAtUtc { get; set; } = DateTime.UtcNow;
     public Content Content { get; set; } = null!;
+}
+
+public static class ExternalFetchMetadataLimits
+{
+    public const int TitleMaxLength = 200;
+    public const int DescriptionMaxLength = 500;
+
+    public static string? NormalizeGenerated(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return null;
+        if (trimmed.Length <= maxLength) return trimmed;
+
+        var length = maxLength;
+        if (length > 0 && char.IsHighSurrogate(trimmed[length - 1]) &&
+            length < trimmed.Length && char.IsLowSurrogate(trimmed[length]))
+        {
+            length--;
+        }
+
+        return trimmed[..length];
+    }
+}
+
+public sealed class ExternalFetchAttempt
+{
+    public const int ExtractedTextMaxLength = 20_000;
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContentId { get; set; }
+    public int AttemptNumber { get; set; }
+    public ExternalFetchStatus Status { get; set; } = ExternalFetchStatus.STARTED;
+    public string? FinalUrl { get; set; }
+    public int? HttpStatusCode { get; set; }
+    public string? ResponseMimeType { get; set; }
+    public long? ResponseBytes { get; set; }
+    public string? ContentSha256 { get; set; }
+    public string? ETag { get; set; }
+    public DateTime? LastModifiedAtUtc { get; set; }
+    public string? PageTitle { get; set; }
+    public string? PageDescription { get; set; }
+    public string? AuthorName { get; set; }
+    public DateTime? PublishedAtUtc { get; set; }
+    public string? ExtractedText { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? ErrorMessage { get; set; }
+    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAtUtc { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+    public Content Content { get; set; } = null!;
+
+    public void Succeed(
+        string finalUrl,
+        int httpStatusCode,
+        string responseMimeType,
+        long responseBytes,
+        string contentSha256,
+        string? etag,
+        DateTime? lastModifiedAtUtc,
+        string? pageTitle,
+        string? pageDescription,
+        string? authorName,
+        DateTime? publishedAtUtc,
+        string extractedText)
+    {
+        Status = ExternalFetchStatus.SUCCEEDED;
+        FinalUrl = finalUrl;
+        HttpStatusCode = httpStatusCode;
+        ResponseMimeType = responseMimeType;
+        ResponseBytes = responseBytes;
+        ContentSha256 = contentSha256;
+        ETag = etag;
+        LastModifiedAtUtc = lastModifiedAtUtc;
+        PageTitle = pageTitle;
+        PageDescription = pageDescription;
+        AuthorName = authorName;
+        PublishedAtUtc = publishedAtUtc;
+        ExtractedText = extractedText;
+        ErrorCode = null;
+        ErrorMessage = null;
+        CompletedAtUtc = DateTime.UtcNow;
+    }
+
+    public void Fail(string code, string message)
+    {
+        Status = ExternalFetchStatus.FAILED;
+        ErrorCode = code;
+        ErrorMessage = message;
+        CompletedAtUtc = DateTime.UtcNow;
+    }
+
+    public void Cancel(string code, string message)
+    {
+        Status = ExternalFetchStatus.CANCELLED;
+        ErrorCode = code;
+        ErrorMessage = message;
+        CompletedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkApplied()
+    {
+        if (Status == ExternalFetchStatus.APPLIED)
+        {
+            return;
+        }
+
+        if (Status != ExternalFetchStatus.SUCCEEDED)
+        {
+            throw new DomainRuleException(
+                "EXTERNAL_FETCH_NOT_APPLICABLE",
+                "성공한 외부 가져오기만 적용할 수 있습니다.");
+        }
+
+        Status = ExternalFetchStatus.APPLIED;
+        CompletedAtUtc = DateTime.UtcNow;
+    }
 }
 
 public static partial class TagNormalizer

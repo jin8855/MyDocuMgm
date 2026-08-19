@@ -8,7 +8,8 @@ export type MediaSort = 'TIME_ASC' | 'TIME_DESC'
 export type ContentSourceKind = 'GENERIC' | 'INSTAGRAM'
 export type InstagramContentType = 'POST' | 'REEL'
 export type PinnedAuthorCommentState = 'PRESENT' | 'NONE'
-export type SourceAcquisitionMode = 'MANUAL'
+export type SourceAcquisitionMode = 'MANUAL' | 'HTTP_METADATA'
+export type ExternalFetchStatus = 'STARTED' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'APPLIED'
 export type IntakeStatus = 'URL_ACCEPTED' | 'MANUAL_INPUT_REQUIRED' | 'CONTENT_READY'
 
 export interface SearchAttribute {
@@ -180,6 +181,8 @@ export interface BlogDraft {
   analysisTitle: string
   shortSummary: string | null
   categoryDisplayName: string
+  requiresExternalSourceReuseConfirmation: boolean
+  externalSourceReuseConfirmed: boolean
   linkedMedia: BlogDraftMediaItem[]
 }
 
@@ -239,6 +242,34 @@ export interface UrlIntake {
   pinnedAuthorCommentText: string | null
   sourceAcquisitionMode: SourceAcquisitionMode | null
   linkedMediaIds: string[]
+}
+
+export interface ExternalFetchAttempt {
+  id: string
+  contentId: string
+  attemptNumber: number
+  status: ExternalFetchStatus
+  finalUrl: string | null
+  httpStatusCode: number | null
+  responseMimeType: string | null
+  responseBytes: number | null
+  contentSha256: string | null
+  eTag: string | null
+  lastModifiedAtUtc: string | null
+  title: string | null
+  description: string | null
+  authorName: string | null
+  publishedAtUtc: string | null
+  body: string | null
+  errorCode: string | null
+  errorMessage: string | null
+  startedAtUtc: string
+  completedAtUtc: string | null
+}
+
+export interface ExternalFetchApply {
+  attempt: ExternalFetchAttempt
+  intake: UrlIntake
 }
 
 export interface LinkableMediaItem {

@@ -61,7 +61,17 @@ public enum PinnedAuthorCommentState
 
 public enum SourceAcquisitionMode
 {
-    MANUAL
+    MANUAL,
+    HTTP_METADATA
+}
+
+public enum ExternalFetchStatus
+{
+    STARTED,
+    SUCCEEDED,
+    FAILED,
+    CANCELLED,
+    APPLIED
 }
 
 public enum IntakeStatus

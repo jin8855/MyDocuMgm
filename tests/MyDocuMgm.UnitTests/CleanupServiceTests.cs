@@ -33,6 +33,7 @@ public sealed class CleanupServiceTests
         await CreateService(repository).PermanentlyDeleteContentAsync(content.Id, default);
 
         Assert.True(repository.ContentRemoved);
+        Assert.Equal(["evidence", "content", "save"], repository.RemovalOrder);
         Assert.Equal(1, repository.SaveCount);
     }
 
@@ -125,11 +126,21 @@ public sealed class CleanupServiceTests
         public bool ContentRemoved { get; private set; }
         public bool MediaRemoved { get; private set; }
         public int SaveCount { get; private set; }
+        public List<string> RemovalOrder { get; } = [];
         public Task<IReadOnlyList<TrashContentItem>> ListTrashAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TrashContentItem>>([]);
         public Task<Content?> FindContentAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(Content);
         public Task<int> CountOwnedMediaAsync(Guid contentId, CancellationToken cancellationToken) => Task.FromResult(OwnedMediaCount);
-        public void RemoveContent(Content content) => ContentRemoved = true;
+        public Task RemoveSourceEvidenceAsync(Guid contentId, CancellationToken cancellationToken)
+        {
+            RemovalOrder.Add("evidence");
+            return Task.CompletedTask;
+        }
+        public void RemoveContent(Content content)
+        {
+            RemovalOrder.Add("content");
+            ContentRemoved = true;
+        }
         public Task<IReadOnlyList<CleanupMediaCandidate>> ListOrphanMediaAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<CleanupMediaCandidate>>(Candidate is null ? [] : [Candidate]);
         public Task<CleanupMediaCandidate?> FindMediaAsync(Guid mediaId, CancellationToken cancellationToken) => Task.FromResult(Candidate);
@@ -138,6 +149,7 @@ public sealed class CleanupServiceTests
         public void RemoveMedia(MediaAsset media) => MediaRemoved = true;
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
+            RemovalOrder.Add("save");
             SaveCount++;
             if (FailSave) throw new InvalidOperationException("simulated database failure");
             return Task.CompletedTask;

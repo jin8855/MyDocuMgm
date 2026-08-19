@@ -25,6 +25,8 @@ public sealed record BlogDraftDto(
     string AnalysisTitle,
     string? ShortSummary,
     string CategoryDisplayName,
+    bool RequiresExternalSourceReuseConfirmation,
+    bool ExternalSourceReuseConfirmed,
     IReadOnlyList<BlogDraftMediaItem> LinkedMedia);
 
 public sealed class SaveBlogDraftRequest
@@ -53,6 +55,7 @@ public sealed class SaveBlogDraftRequest
     }
 
     public bool Complete { get; init; }
+    public bool ConfirmExternalSourceReuse { get; init; }
     public string? ContentRowVersion { get; init; }
     public string? DraftRowVersion { get; init; }
 
@@ -117,6 +120,18 @@ public sealed class BlogDraftService(IBlogDraftRepository repository)
         if (draft is not null)
         {
             EnsureDraftRowVersion(draft, request.DraftRowVersion);
+        }
+
+        if (content.SourceAcquisitionMode == SourceAcquisitionMode.HTTP_METADATA &&
+            content.ExternalContentBlogReuseConfirmedAtUtc is null)
+        {
+            if (!request.ConfirmExternalSourceReuse)
+            {
+                throw Error(
+                    "BLOG_DRAFT_SOURCE_REUSE_CONFIRMATION_REQUIRED",
+                    "외부 출처의 내용을 블로그 초안에 재사용하려면 권리 확인이 필요합니다.");
+            }
+            content.ConfirmExternalContentBlogReuse();
         }
 
         var title = request.HasTitle ? request.Title ?? string.Empty : draft?.Title ?? content.Title;
@@ -265,6 +280,9 @@ public sealed class BlogDraftService(IBlogDraftRepository repository)
             content.Title,
             content.ShortSummary,
             category.DisplayName,
+            content.SourceAcquisitionMode == SourceAcquisitionMode.HTTP_METADATA,
+            content.SourceAcquisitionMode != SourceAcquisitionMode.HTTP_METADATA ||
+                content.ExternalContentBlogReuseConfirmedAtUtc is not null,
             linkedMedia);
     }
 

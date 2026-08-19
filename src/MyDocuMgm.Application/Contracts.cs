@@ -262,6 +262,7 @@ public interface ICleanupRepository
     Task<IReadOnlyList<TrashContentItem>> ListTrashAsync(CancellationToken cancellationToken);
     Task<Content?> FindContentAsync(Guid id, CancellationToken cancellationToken);
     Task<int> CountOwnedMediaAsync(Guid contentId, CancellationToken cancellationToken);
+    Task RemoveSourceEvidenceAsync(Guid contentId, CancellationToken cancellationToken);
     void RemoveContent(Content content);
     Task<IReadOnlyList<CleanupMediaCandidate>> ListOrphanMediaAsync(CancellationToken cancellationToken);
     Task<CleanupMediaCandidate?> FindMediaAsync(Guid mediaId, CancellationToken cancellationToken);

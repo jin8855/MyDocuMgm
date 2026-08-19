@@ -33,6 +33,19 @@ async function submitUrl(host: HTMLElement, url: string) {
 }
 
 describe('Phase 2A URL intake web contract', () => {
+  it('loads an existing generic intake with no fetch attempt as an explicit empty state', async () => {
+    const intake = await api.createUrlIntake(`https://example.com/empty-${crypto.randomUUID()}`)
+    const { host, app } = mountStage(intake.id, false)
+
+    await flush()
+    await flush()
+
+    expect(await api.latestExternalFetch(intake.id)).toBeUndefined()
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(host.textContent).toContain('미리보기 가져오기')
+    app.unmount()
+  })
+
   it('shows invalid URL validation and supports retry', async () => {
     const { host, app } = mountStage()
 
@@ -269,12 +282,90 @@ describe('Phase 2A URL intake web contract', () => {
     app.unmount()
   })
 
-  it('keeps external fetch and later workflow success out of the URL screen', () => {
+  it('previews a generic public page before explicit apply', async () => {
     const { host, app } = mountStage()
+    const sourceUrl = 'https://example.com/article-' + crypto.randomUUID()
 
-    expect(host.textContent).toContain('외부 사이트 접속이나 자동 수집은 실행하지 않습니다.')
-    expect(host.textContent).not.toContain('수집 완료')
-    expect(host.textContent).not.toContain('요약 완료')
+    await submitUrl(host, sourceUrl)
+    const intakeBefore = await api.createUrlIntake(sourceUrl)
+    expect(intakeBefore.status).toBe('URL_ACCEPTED')
+    expect(intakeBefore.sourceAcquisitionMode).toBeNull()
+
+    host.querySelector<HTMLButtonElement>('[data-testid="external-fetch-start"]')!.click()
+    await flush()
+    await flush()
+
+    expect(host.querySelector<HTMLTextAreaElement>('#external-fetch-body')?.value)
+      .toContain('합성 HTML 추출 결과')
+    const stillPreview = await api.urlIntake(intakeBefore.id)
+    expect(stillPreview.status).toBe('URL_ACCEPTED')
+    expect(stillPreview.manualBody).toBeNull()
+
+    host.querySelector<HTMLButtonElement>('[data-testid="external-fetch-apply"]')!.click()
+    await flush()
+    await flush()
+
+    const applied = await api.urlIntake(intakeBefore.id)
+    expect(applied.status).toBe('CONTENT_READY')
+    expect(applied.sourceAcquisitionMode).toBe('HTTP_METADATA')
+    expect(applied.manualBody).toContain('합성 HTML 추출 결과')
+    expect(host.textContent).toContain('미리보기를 현재 자료에 적용했습니다')
+    app.unmount()
+  })
+
+  it('shows localized failure, preserves manual input, and blocks a fourth fetch', async () => {
+    const { host, app } = mountStage()
+    const sourceUrl = 'https://example.com/mock-fetch-failure-' + crypto.randomUUID()
+
+    await submitUrl(host, sourceUrl)
+    const manualButton = Array.from(host.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('본문 직접 입력'))!
+    manualButton.click()
+    await flush()
+    setValue(host.querySelector<HTMLTextAreaElement>('#manual-body')!, '보존할 수동 입력')
+
+    const fetchButton = host.querySelector<HTMLButtonElement>('[data-testid="external-fetch-start"]')!
+    fetchButton.click()
+    await flush()
+    await flush()
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('원격 문서를 가져오지 못했습니다')
+    expect(host.textContent).toContain('가져오기 실패')
+    expect(host.textContent).not.toContain('FAILED')
+    expect(host.querySelector<HTMLTextAreaElement>('#manual-body')?.value).toBe('보존할 수동 입력')
+
+    fetchButton.click()
+    await flush()
+    await flush()
+    expect(host.textContent).toContain('가져오기 완료')
+    expect(host.textContent).not.toContain('SUCCEEDED')
+
+    fetchButton.click()
+    await flush()
+    await flush()
+    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id))!.attemptNumber).toBe(3)
+
+    fetchButton.click()
+    await flush()
+    await flush()
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('최대 3회')
+    expect((await api.latestExternalFetch((await api.createUrlIntake(sourceUrl)).id))!.attemptNumber).toBe(3)
+    expect(host.querySelector<HTMLTextAreaElement>('#manual-body')?.value).toBe('보존할 수동 입력')
+
+    host.querySelector<HTMLButtonElement>('[data-testid="external-fetch-apply"]')!.click()
+    await flush()
+    await flush()
+    expect(host.textContent).toContain('적용 완료')
+    expect(host.textContent).not.toContain('APPLIED')
+    app.unmount()
+  })
+
+  it('keeps Instagram manual-only and does not expose external fetch controls', async () => {
+    const { host, app } = mountStage()
+    await submitUrl(host, 'https://www.instagram.com/p/manual-only-' + crypto.randomUUID() + '/')
+
+    expect(host.querySelector('[data-testid="external-fetch-start"]')).toBeNull()
+    expect(host.querySelector('#manual-caption')).toBeTruthy()
     app.unmount()
   })
 })
