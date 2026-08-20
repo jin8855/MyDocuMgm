@@ -6,6 +6,7 @@ import MediaUploadPanel from '../media-management/MediaUploadPanel.vue'
 import { useMediaState } from '../media-management/useMediaState'
 import { ApiError, api } from '../../shared/api/client'
 import type { ExternalFetchAttempt, LinkableMediaPage, PinnedAuthorCommentState, UrlIntake } from '../../shared/types'
+import HelpPopover from '../../shared/components/HelpPopover.vue'
 
 const props = defineProps<{ contentId: string; newWork?: boolean }>()
 const emit = defineEmits<{ dirty: []; saved: []; accepted: [contentId: string] }>()
@@ -301,9 +302,9 @@ watch(() => [props.contentId, props.newWork], load, { immediate: true })
 <template>
   <section class="surface form-stack url-intake" aria-labelledby="url-intake-title">
     <div class="section-title">
-      <div>
+      <div class="title-with-help">
         <h2 id="url-intake-title">URL 자료 등록</h2>
-        <p>일반 공개 웹페이지는 텍스트 미리보기를 제공하며, Instagram은 수동 입력만 지원합니다.</p>
+        <HelpPopover label="URL 자료 등록 도움말">일반 공개 웹페이지는 텍스트 미리보기를 제공하며, Instagram은 수동 입력만 지원합니다.</HelpPopover>
       </div>
       <span v-if="intake" class="status-badge">{{ statusLabel }}</span>
     </div>

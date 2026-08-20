@@ -52,7 +52,7 @@ onMounted(refresh)
 <template>
   <main class="page cleanup-page">
     <header class="page-title">
-      <div><p class="eyebrow">SAFE CLEANUP</p><h1>휴지통·미디어 정리</h1><p>연결이 없는 미디어를 먼저 정리한 뒤, 소유 미디어가 없는 휴지통 콘텐츠만 영구 삭제합니다.</p></div>
+      <div><h1>휴지통·미디어 정리</h1><p>연결이 없는 미디어를 먼저 정리한 뒤, 소유 미디어가 없는 휴지통 콘텐츠만 영구 삭제합니다.</p></div>
       <button class="button" type="button" :disabled="loading" @click="refresh">새로고침</button>
     </header>
 

@@ -20,7 +20,6 @@ function startNewWork() {
   <div class="app-shell">
     <aside class="sidebar">
       <RouterLink class="brand" to="/">
-        <span class="brand-symbol">나</span>
         <span><strong>나의 생활북</strong><small>MyDocuMgm</small></span>
       </RouterLink>
       <nav class="side-nav" aria-label="왼쪽 메뉴">
@@ -31,8 +30,8 @@ function startNewWork() {
     </aside>
     <div class="shell-main">
       <header class="workspace-header">
-        <div><strong>나의 생활북</strong><span>생활 자료 작업 공간</span></div>
-        <button class="button primary" type="button" @click="startNewWork">새 작업</button>
+        <div class="workspace-brand"><strong>나의 생활북</strong></div>
+        <button class="button primary" type="button" @click="startNewWork">새 자료 수집</button>
       </header>
       <main><RouterView /></main>
     </div>

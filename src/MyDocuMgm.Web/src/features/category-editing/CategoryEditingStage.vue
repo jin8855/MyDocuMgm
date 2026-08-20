@@ -4,6 +4,7 @@ import type { Category, CookingIngredient } from '../../shared/types'
 import IngredientTable from '../ingredient-editing/IngredientTable.vue'
 import PrimaryIngredientSelector from '../ingredient-editing/PrimaryIngredientSelector.vue'
 import { categoryFields } from './categoryFields'
+import HelpPopover from '../../shared/components/HelpPopover.vue'
 
 const props = defineProps<{
   title: string
@@ -45,7 +46,7 @@ function updateField(key: string, event: Event) {
 <template>
   <section class="surface form-stack" data-testid="category-edit-stage" :aria-busy="saving">
     <div class="section-title">
-      <div><span class="eyebrow">사용자 직접 편집</span><h2>분류별 편집</h2><p>자동 분류 없이 분류와 필요한 상세 항목을 직접 정합니다.</p></div>
+      <div class="title-with-help"><h2>분류별 편집</h2><HelpPopover label="분류별 편집 도움말">자동 분류 없이 분류와 현재 저장 구조가 지원하는 상세 항목을 직접 정합니다.</HelpPopover></div>
     </div>
     <aside class="category-context" aria-label="분석 검토 결과">
       <strong>{{ title }}</strong><p>{{ shortSummary || '작성된 요약이 없습니다.' }}</p>
@@ -57,7 +58,7 @@ function updateField(key: string, event: Event) {
       </select>
     </label>
     <div v-if="selectedCategory" class="category-field-panel">
-      <div class="section-title compact"><div><h3>{{ selectedCategory.displayName }} 상세 항목</h3><p>현재 저장 구조로 지원하는 항목만 표시합니다.</p></div></div>
+      <div class="section-title compact"><div><h3>{{ selectedCategory.displayName }} 상세 항목</h3></div></div>
       <div class="form-grid two">
         <label v-for="field in fields" :key="field.key" :for="`category-field-${field.key}`">
           {{ field.label }}

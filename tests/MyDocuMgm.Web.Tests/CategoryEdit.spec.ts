@@ -38,6 +38,8 @@ describe('Phase 2B category edit', () => {
 
     expect(host.querySelector('[data-testid="category-edit-stage"]')).not.toBeNull()
     expect(host.textContent).toContain('직접 확정한 제목')
+    host.querySelector<HTMLButtonElement>('button[aria-label="분류별 편집 도움말"]')!.click()
+    await nextTick()
     expect(host.textContent).toContain('자동 분류 없이')
 
     const categories = await api.categories()
