@@ -5,6 +5,7 @@ import SearchPanel from '../features/content-search/SearchPanel.vue'
 import { api } from '../shared/api/client'
 import type { Category, ContentPage, SearchQuery } from '../shared/types'
 import { contentStatusLabel, workflowStepLabel, workflowStepRoute } from '../shared/presentation/labels'
+import HelpPopover from '../shared/components/HelpPopover.vue'
 
 const categories = ref<Category[]>([])
 const result = ref<ContentPage>({ items: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 1 })
@@ -17,7 +18,7 @@ onMounted(async () => { categories.value = await api.categories(); await search(
 
 <template>
   <div class="page">
-    <header class="page-title"><div><p class="eyebrow">WORK LIST</p><h1>작업목록</h1><p>분류 속성, 상태, 태그와 내용으로 작업을 찾습니다.</p></div></header>
+    <header class="page-title"><div class="title-with-help"><h1>작업목록</h1><HelpPopover label="작업목록 도움말">분류 속성, 상태, 태그와 내용으로 저장된 자료를 찾습니다.</HelpPopover></div></header>
     <SearchPanel :model-value="query" :categories="categories" @update:model-value="Object.assign(query, $event)" @search="search" @reset="reset" />
     <div class="result-summary"><strong>{{ result.totalCount }}</strong>개 결과 <span v-if="loading">· 검색 중…</span></div>
     <section class="surface flush">

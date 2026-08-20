@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import HelpPopover from '../shared/components/HelpPopover.vue'
 
 const cards = [
   { id: 'demo', title: '바삭한 새우 토스트', summary: '주재료 새우 · 20분 · 쉬움', tone: 'tone-one' },
@@ -10,7 +11,7 @@ const cards = [
 <template>
   <div class="page mobile-reading">
     <header class="mobile-reading-head">
-      <div><p class="eyebrow">MOBILE READING</p><h1>모바일 읽기</h1><p>검색하고 읽는 일에 집중합니다.</p></div>
+      <div class="title-with-help"><h1>모바일 읽기</h1><HelpPopover label="모바일 읽기 도움말">휴대전화에서는 저장된 자료를 검색하고 읽는 기능에 집중합니다.</HelpPopover></div>
     </header>
     <section class="mobile-search" aria-label="모바일 자료 검색">
       <label class="sr-only" for="mobile-keyword">검색어</label>

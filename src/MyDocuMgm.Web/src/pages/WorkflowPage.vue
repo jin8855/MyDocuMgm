@@ -17,6 +17,7 @@ import { api } from '../shared/api/client'
 import type { BlogDraft as BlogDraftData, Category, CategoryEdit, ContentItem, CookingIngredient, DetailStage as DetailStageData, ImageStage, ImageStageMediaItem, LinkableMediaPage, UrlIntake, WorkflowStep } from '../shared/types'
 import { workflowSteps } from '../shared/presentation/labels'
 import { cloneValue } from '../shared/utils/clone'
+import HelpPopover from '../shared/components/HelpPopover.vue'
 
 const props = defineProps<{ id: string; step: string }>()
 const router = useRouter()
@@ -726,10 +727,9 @@ watch(() => [props.id, props.step], load, { immediate: true })
     />
 
     <header class="page-title compact-title">
-      <div>
-        <span class="eyebrow">7단계 작업 흐름</span>
-        <h1>{{ content?.title ?? (isNewWork ? '새 작업' : current === 'URL' ? 'URL 접수 작업' : '콘텐츠 불러오는 중') }}</h1>
-        <p>{{ workflowSteps[currentIndex]?.label }} 단계에서 필요한 정보만 차분하게 확인합니다.</p>
+      <div class="title-with-help">
+        <h1>{{ content?.title ?? (isNewWork ? '새 자료 수집' : current === 'URL' ? 'URL 접수 작업' : '콘텐츠 불러오는 중') }}</h1>
+        <HelpPopover label="현재 작업 단계 도움말">현재 단계는 {{ workflowSteps[currentIndex]?.label }}입니다. 위 단계 표시에서 이전·다음 단계를 확인할 수 있습니다.</HelpPopover>
       </div>
       <span v-if="dirty" class="dirty-indicator">저장하지 않은 변경</span>
     </header>
@@ -751,7 +751,7 @@ watch(() => [props.id, props.step], load, { immediate: true })
     />
     <section v-else-if="isNewWork" class="surface empty-state" data-testid="new-work-empty-stage">
       <h2>{{ workflowSteps[currentIndex]?.label }} 데이터가 없습니다</h2>
-      <p>새 작업은 이전 작업의 데이터와 연결되지 않습니다. URL 단계부터 새 내용을 입력해 주세요.</p>
+      <p>새 자료 수집은 이전 작업의 데이터와 연결되지 않습니다. URL 단계부터 새 내용을 입력해 주세요.</p>
     </section>
     <AnalysisReviewStage
       v-else-if="current === 'ANALYSIS_REVIEW' && analysisIntake"

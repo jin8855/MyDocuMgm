@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { categoryFields } from '../category-editing/categoryFields'
 import type { DetailStage } from '../../shared/types'
+import HelpPopover from '../../shared/components/HelpPopover.vue'
 
 const props = defineProps<{
   stage: DetailStage
@@ -46,10 +47,9 @@ function formatBytes(value: number) {
     :aria-busy="saving"
   >
     <header class="surface detail-review-intro">
-      <div>
-        <span class="eyebrow">5단계 · 자료 상세</span>
+      <div class="title-with-help">
         <h2>저장 전 통합 검토</h2>
-        <p>앞 단계에서 확정한 정보를 한곳에서 확인한 뒤 블로그 초안으로 이동합니다.</p>
+        <HelpPopover label="자료 상세 도움말">앞 단계에서 확정한 정보를 한곳에서 확인한 뒤 블로그 초안으로 이동합니다.</HelpPopover>
       </div>
       <span class="badge accent">{{ stage.categoryDisplayName }}</span>
     </header>

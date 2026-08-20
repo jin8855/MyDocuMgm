@@ -1,3 +1,7 @@
+import { createApp, nextTick } from 'vue'
+import { createMemoryHistory, createRouter } from '../../src/MyDocuMgm.Web/node_modules/vue-router/dist/vue-router.mjs'
+import AppShell from '../../src/MyDocuMgm.Web/src/app/AppShell.vue'
+import DashboardPage from '../../src/MyDocuMgm.Web/src/pages/DashboardPage.vue'
 import { api } from '../../src/MyDocuMgm.Web/src/shared/api/client'
 import {
   contentStatusLabel,
@@ -8,6 +12,40 @@ import {
 } from '../../src/MyDocuMgm.Web/src/shared/presentation/labels'
 
 describe('Phase 1A repair mock contract', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('shows one global intake action and an explicit empty continuation state', async () => {
+    vi.spyOn(api, 'contents').mockResolvedValue({
+      items: [], page: 1, pageSize: 24, totalCount: 0, totalPages: 0,
+    })
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: DashboardPage },
+        { path: '/contents', component: { template: '<div>목록</div>' } },
+        { path: '/workflow/:id/:step', component: { template: '<div>워크플로</div>' } },
+      ],
+    })
+    await router.push('/')
+    await router.isReady()
+
+    const host = document.createElement('div')
+    const app = createApp(AppShell)
+    app.use(router)
+    app.mount(host)
+    await Promise.resolve()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await nextTick()
+
+    const intakeActions = [...host.querySelectorAll('button')]
+      .filter(button => button.textContent?.trim() === '새 자료 수집')
+    expect(intakeActions).toHaveLength(1)
+    expect(host.textContent).toContain('이어 할 작업이 없습니다.')
+    expect(host.textContent).toContain('현재 진행 단계가 있는 자료 수')
+    expect(host.querySelectorAll('.help-trigger')).toHaveLength(0)
+    app.unmount()
+  })
+
   it('maps workflow and status codes through one presentation mapper', () => {
     expect(workflowStepLabels).toEqual({
       URL: 'URL',
