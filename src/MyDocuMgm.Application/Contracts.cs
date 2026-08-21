@@ -72,13 +72,17 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int 
     public int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
 }
 
-public interface IContentRepository
+public interface IContentTagRepository
+{
+    Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken);
+    Task AddTagAsync(Tag tag, CancellationToken cancellationToken);
+}
+
+public interface IContentRepository : IContentTagRepository
 {
     Task<PagedResult<ContentSummary>> ListAsync(ContentQuery query, CancellationToken cancellationToken);
     Task<Content?> FindAsync(Guid id, bool includeDeleted, CancellationToken cancellationToken);
     Task AddAsync(Content content, CancellationToken cancellationToken);
-    Task<Tag?> FindTagAsync(string normalizedName, CancellationToken cancellationToken);
-    Task AddTagAsync(Tag tag, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 

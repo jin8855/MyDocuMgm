@@ -55,7 +55,7 @@ public sealed class AnalysisReviewService(IContentRepository repository)
         }
     }
 
-    private static void EnsureIntakeReady(Content content)
+    internal static void EnsureIntakeReady(Content content)
     {
         if (content.SourceKind == ContentSourceKind.GENERIC &&
             content.IntakeStatus == IntakeStatus.CONTENT_READY &&
@@ -84,7 +84,7 @@ public sealed class AnalysisReviewService(IContentRepository repository)
         }
     }
 
-    private static void EnsureReviewable(WorkflowStep step)
+    internal static void EnsureReviewable(WorkflowStep step)
     {
         if (step is not (WorkflowStep.URL or WorkflowStep.ANALYSIS_REVIEW))
         {

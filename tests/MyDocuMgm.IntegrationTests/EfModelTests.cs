@@ -30,6 +30,9 @@ public sealed class EfModelTests
         Assert.Contains("OtherDetails", tables);
         Assert.Contains("ContentMediaLinks", tables);
         Assert.Contains("BlogDrafts", tables);
+        Assert.Contains("AnalysisRecommendationRuns", tables);
+        Assert.Contains("AnalysisRecommendationItems", tables);
+        Assert.Contains("AnalysisRecommendationEvidence", tables);
         Assert.DoesNotContain("Publication", tables);
         Assert.DoesNotContain("ImportJobs", tables);
     }
@@ -46,12 +49,16 @@ public sealed class EfModelTests
         var tag = context.Model.FindEntityType(typeof(Tag))!;
         var mediaLink = context.Model.FindEntityType(typeof(ContentMediaLink))!;
         var blogDraft = context.Model.FindEntityType(typeof(BlogDraft))!;
+        var recommendationRun = context.Model.FindEntityType(typeof(AnalysisRecommendationRun))!;
+        var recommendationItem = context.Model.FindEntityType(typeof(AnalysisRecommendationItem))!;
+        var recommendationEvidence = context.Model.FindEntityType(typeof(AnalysisRecommendationEvidence))!;
 
         Assert.True(content.FindProperty(nameof(Content.RowVersion))!.IsConcurrencyToken);
         Assert.True(media.FindProperty(nameof(MediaAsset.RowVersion))!.IsConcurrencyToken);
         Assert.True(category.FindProperty(nameof(Category.RowVersion))!.IsConcurrencyToken);
         Assert.True(ingredient.FindProperty(nameof(CookingIngredient.RowVersion))!.IsConcurrencyToken);
         Assert.True(blogDraft.FindProperty(nameof(BlogDraft.RowVersion))!.IsConcurrencyToken);
+        Assert.True(recommendationRun.FindProperty(nameof(AnalysisRecommendationRun.RowVersion))!.IsConcurrencyToken);
         Assert.Equal(BlogDraft.TitleMaxLength, blogDraft.FindProperty(nameof(BlogDraft.Title))!.GetMaxLength());
         Assert.Equal(BlogDraft.BodyMaxLength, blogDraft.FindProperty(nameof(BlogDraft.Body))!.GetMaxLength());
         Assert.Contains(blogDraft.GetIndexes(), index =>
@@ -80,6 +87,15 @@ public sealed class EfModelTests
         Assert.Contains(mediaLink.GetForeignKeys(), key =>
             key.PrincipalEntityType.ClrType == typeof(MediaAsset) &&
             key.DeleteBehavior == DeleteBehavior.Restrict);
+        Assert.Contains(recommendationRun.GetIndexes(), index =>
+            index.IsUnique && index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(AnalysisRecommendationRun.ContentId), nameof(AnalysisRecommendationRun.IdempotencyKey)]));
+        Assert.Contains(recommendationRun.GetForeignKeys(), key =>
+            key.PrincipalEntityType.ClrType == typeof(Content) && key.DeleteBehavior == DeleteBehavior.Cascade);
+        Assert.Contains(recommendationItem.GetForeignKeys(), key =>
+            key.PrincipalEntityType.ClrType == typeof(AnalysisRecommendationRun) && key.DeleteBehavior == DeleteBehavior.Cascade);
+        Assert.Contains(recommendationEvidence.GetForeignKeys(), key =>
+            key.PrincipalEntityType.ClrType == typeof(SourceEvidence) && key.DeleteBehavior == DeleteBehavior.SetNull);
     }
 
     [Fact]

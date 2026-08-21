@@ -1,4 +1,7 @@
 import type {
+  AnalysisRecommendationDecisionInput,
+  AnalysisRecommendationDecisionResult,
+  AnalysisRecommendationRun,
   BlogDraft,
   BlogDraftPatch,
   Category,
@@ -182,6 +185,36 @@ const imageStageLinks = new Map<string, string[]>([[mockContentId, []]])
 const blogDrafts = new Map<string, { title: string; body: string; rowVersion: string }>()
 const externalFetchAttempts = new Map<string, ExternalFetchAttempt[]>()
 const externalBlogReuseConfirmations = new Set<string>()
+const analysisRecommendationRuns = new Map<string, AnalysisRecommendationRun[]>()
+const analysisRecommendationIdempotency = new Map<string, AnalysisRecommendationRun>()
+
+function mockGuid(): string {
+  return crypto.randomUUID()
+}
+
+function createMockRecommendationRun(item: ContentItem): AnalysisRecommendationRun {
+  const evidence = item.detailContent
+    ? [{ evidenceType: 'DETAIL_CONTENT' as const, sourceEvidenceId: null, excerpt: item.detailContent }]
+    : []
+  const now = new Date().toISOString()
+  return {
+    id: mockGuid(),
+    contentId: item.id,
+    requestedAtUtc: now,
+    completedAtUtc: now,
+    status: 'SUCCEEDED',
+    providerIdentifier: 'fixture-provider',
+    modelVersion: 'fixture-v1',
+    errorCode: null,
+    rowVersion,
+    items: [
+      { id: mockGuid(), kind: 'TITLE', recommendedValue: `${item.title} 정리`, reason: '현재 본문의 핵심 주제를 제목에 반영했습니다.', confidence: 'HIGH', decision: 'PENDING', modifiedValue: null, decidedAtUtc: null, evidence },
+      { id: mockGuid(), kind: 'SUMMARY', recommendedValue: item.shortSummary ?? '자료의 핵심 내용을 짧게 정리했습니다.', reason: '현재 입력된 설명을 바탕으로 요약했습니다.', confidence: 'MEDIUM', decision: 'PENDING', modifiedValue: null, decidedAtUtc: null, evidence },
+      { id: mockGuid(), kind: 'CATEGORY', recommendedValue: item.categoryId, reason: '현재 내용과 가장 가까운 분류입니다.', confidence: 'LOW', decision: 'PENDING', modifiedValue: null, decidedAtUtc: null, evidence },
+      { id: mockGuid(), kind: 'TAG', recommendedValue: '정리필요', reason: '다시 찾기 위한 검색어 후보입니다.', confidence: 'MEDIUM', decision: 'PENDING', modifiedValue: null, decidedAtUtc: null, evidence },
+    ],
+  }
+}
 
 function normalizeMockUrl(
   input: string,
@@ -836,6 +869,95 @@ export const api = {
       return cloneValue(item)
     }
     return request(contentPath(id))
+  },
+  async requestAnalysisRecommendations(
+    contentId: string,
+    idempotencyKey: string,
+  ): Promise<AnalysisRecommendationRun> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-recommendations`, {
+        method: 'POST',
+        body: JSON.stringify({ idempotencyKey }),
+      })
+    }
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const key = `${contentId}:${idempotencyKey}`
+    const existing = analysisRecommendationIdempotency.get(key)
+    if (existing) return cloneValue(existing)
+    const run = createMockRecommendationRun(item)
+    const fixtureMode = new URLSearchParams(window.location.search).get('recommendationFixture')
+    if (fixtureMode === 'partial') {
+      run.status = 'PARTIALLY_SUCCEEDED'
+      run.items = run.items.slice(0, 2)
+    }
+    if (fixtureMode === 'unavailable') {
+      run.status = 'FAILED'
+      run.errorCode = 'ANALYSIS_PROVIDER_NOT_CONNECTED'
+      run.items = []
+    }
+    analysisRecommendationRuns.set(contentId, [run, ...(analysisRecommendationRuns.get(contentId) ?? [])])
+    analysisRecommendationIdempotency.set(key, run)
+    if (fixtureMode === 'unavailable') {
+      throw new ApiError(
+        'ANALYSIS_PROVIDER_NOT_CONNECTED',
+        '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.',
+      )
+    }
+    return cloneValue(run)
+  },
+  async latestAnalysisRecommendations(contentId: string): Promise<AnalysisRecommendationRun | null> {
+    if (!mockEnabled) {
+      return request<AnalysisRecommendationRun | null>(`${contentPath(contentId)}/analysis-recommendations/latest`)
+    }
+    return cloneValue(analysisRecommendationRuns.get(contentId)?.[0] ?? null)
+  },
+  async analysisRecommendationHistory(contentId: string, limit = 10): Promise<AnalysisRecommendationRun[]> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-recommendations?limit=${limit}`)
+    }
+    return cloneValue((analysisRecommendationRuns.get(contentId) ?? []).slice(0, limit))
+  },
+  async saveAnalysisRecommendationDecisions(
+    contentId: string,
+    runId: string,
+    contentRowVersion: string,
+    decisions: AnalysisRecommendationDecisionInput[],
+  ): Promise<AnalysisRecommendationDecisionResult> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-recommendations/${encodeURIComponent(runId)}/decisions`, {
+        method: 'PUT',
+        body: JSON.stringify({ contentRowVersion, decisions }),
+      })
+    }
+    const item = contents.find(value => value.id === contentId)
+    const run = analysisRecommendationRuns.get(contentId)?.find(value => value.id === runId)
+    if (!item || !run) throw new ApiError('NOT_FOUND', '추천 이력을 찾을 수 없습니다.')
+    if (item.rowVersion !== contentRowVersion) throw new ApiError('CONCURRENCY_CONFLICT', '다른 변경이 먼저 저장되었습니다.')
+    let updated = { ...item, tags: [...item.tags] }
+    for (const input of decisions) {
+      const recommendation = run.items.find(value => value.id === input.itemId)
+      if (!recommendation) throw new ApiError('ANALYSIS_RECOMMENDATION_ITEM_MISMATCH', '다른 추천 요청의 항목은 적용할 수 없습니다.')
+      const value = input.decision === 'MODIFIED' ? input.modifiedValue?.trim() ?? '' : recommendation.recommendedValue
+      if (input.decision !== 'REJECTED') {
+        if (recommendation.kind === 'TITLE') updated.title = value
+        if (recommendation.kind === 'SUMMARY') updated.shortSummary = value || null
+        if (recommendation.kind === 'CATEGORY') {
+          const category = categories.find(categoryValue => categoryValue.id === value)
+          if (!category) throw new ApiError('CATEGORY_REQUIRED', '분류를 선택해 주세요.')
+          updated.categoryId = category.id
+          updated.categoryCode = category.code
+          updated.categoryDisplayName = category.displayName
+        }
+        if (recommendation.kind === 'TAG' && value && !updated.tags.includes(value)) updated.tags.push(value)
+      }
+      recommendation.decision = input.decision
+      recommendation.modifiedValue = input.decision === 'MODIFIED' ? value : null
+      recommendation.decidedAtUtc = new Date().toISOString()
+    }
+    updated = { ...updated, updatedAtUtc: new Date().toISOString() }
+    contents = contents.map(value => value.id === contentId ? updated : value)
+    return cloneValue({ content: updated, run })
   },
   async saveAnalysisReview(
     contentId: string,

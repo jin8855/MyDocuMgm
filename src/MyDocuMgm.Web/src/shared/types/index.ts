@@ -11,6 +11,53 @@ export type PinnedAuthorCommentState = 'PRESENT' | 'NONE'
 export type SourceAcquisitionMode = 'MANUAL' | 'HTTP_METADATA'
 export type ExternalFetchStatus = 'STARTED' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'APPLIED'
 export type IntakeStatus = 'URL_ACCEPTED' | 'MANUAL_INPUT_REQUIRED' | 'CONTENT_READY'
+export type AnalysisRecommendationRunStatus = 'REQUESTED' | 'SUCCEEDED' | 'PARTIALLY_SUCCEEDED' | 'FAILED' | 'CANCELLED'
+export type AnalysisRecommendationKind = 'TITLE' | 'SUMMARY' | 'CATEGORY' | 'TAG'
+export type AnalysisRecommendationConfidence = 'LOW' | 'MEDIUM' | 'HIGH'
+export type AnalysisRecommendationDecision = 'PENDING' | 'APPLIED' | 'MODIFIED' | 'REJECTED'
+export type AnalysisRecommendationEvidenceType = 'DETAIL_CONTENT' | 'MANUAL_CAPTION' | 'PINNED_AUTHOR_COMMENT' | 'SOURCE_EVIDENCE'
+
+export interface AnalysisRecommendationEvidence {
+  evidenceType: AnalysisRecommendationEvidenceType
+  sourceEvidenceId: string | null
+  excerpt: string
+}
+
+export interface AnalysisRecommendationItem {
+  id: string
+  kind: AnalysisRecommendationKind
+  recommendedValue: string
+  reason: string
+  confidence: AnalysisRecommendationConfidence
+  decision: AnalysisRecommendationDecision
+  modifiedValue: string | null
+  decidedAtUtc: string | null
+  evidence: AnalysisRecommendationEvidence[]
+}
+
+export interface AnalysisRecommendationRun {
+  id: string
+  contentId: string
+  requestedAtUtc: string
+  completedAtUtc: string | null
+  status: AnalysisRecommendationRunStatus
+  providerIdentifier: string
+  modelVersion: string | null
+  errorCode: string | null
+  rowVersion: string
+  items: AnalysisRecommendationItem[]
+}
+
+export interface AnalysisRecommendationDecisionInput {
+  itemId: string
+  decision: Exclude<AnalysisRecommendationDecision, 'PENDING'>
+  modifiedValue: string | null
+}
+
+export interface AnalysisRecommendationDecisionResult {
+  content: ContentItem
+  run: AnalysisRecommendationRun
+}
 
 export interface SearchAttribute {
   id: string

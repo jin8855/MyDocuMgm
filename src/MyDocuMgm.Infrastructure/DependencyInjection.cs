@@ -3,6 +3,7 @@ using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MyDocuMgm.Application;
+using MyDocuMgm.Application.AnalysisRecommendations;
 using MyDocuMgm.Application.Categories;
 using MyDocuMgm.Application.CookingIngredients;
 using MyDocuMgm.Application.Contents.WriteBlogDraft;
@@ -89,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<ICategoryManagementRepository, EfCategoryManagementRepository>();
         services.AddScoped<IUrlIntakeRepository, EfUrlIntakeRepository>();
         services.AddScoped<IExternalFetchRepository, EfExternalFetchRepository>();
+        services.AddScoped<IAnalysisRecommendationRepository, EfAnalysisRecommendationRepository>();
         services.AddScoped<IImageStageRepository, EfImageStageRepository>();
         services.AddScoped<IDetailStageRepository, EfDetailStageRepository>();
         services.AddScoped<IBlogDraftRepository, EfBlogDraftRepository>();
@@ -116,6 +118,8 @@ public static class DependencyInjection
         services.AddSingleton(_ => new RobotsPolicyEvaluator(ExternalFetchOptions.RobotsProductToken));
         services.AddSingleton<IHtmlContentExtractor, HtmlContentExtractor>();
         services.AddScoped<ExternalFetchService>();
+        services.AddScoped<AnalysisRecommendationService>();
+        services.AddSingleton<IAnalysisRecommendationProvider, UnavailableAnalysisRecommendationProvider>();
         services.AddSingleton<IExternalPageFetcher>(provider =>
             {
                 var destinationValidator = provider.GetRequiredService<SsrfSafeDestinationValidator>();

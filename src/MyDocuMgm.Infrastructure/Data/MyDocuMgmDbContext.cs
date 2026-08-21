@@ -16,6 +16,9 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
     public DbSet<ContentMediaLink> ContentMediaLinks => Set<ContentMediaLink>();
     public DbSet<SourceEvidence> SourceEvidence => Set<SourceEvidence>();
     public DbSet<ExternalFetchAttempt> ExternalFetchAttempts => Set<ExternalFetchAttempt>();
+    public DbSet<AnalysisRecommendationRun> AnalysisRecommendationRuns => Set<AnalysisRecommendationRun>();
+    public DbSet<AnalysisRecommendationItem> AnalysisRecommendationItems => Set<AnalysisRecommendationItem>();
+    public DbSet<AnalysisRecommendationEvidence> AnalysisRecommendationEvidenceRecords => Set<AnalysisRecommendationEvidence>();
     public DbSet<PlaceDetails> PlaceDetails => Set<PlaceDetails>();
     public DbSet<CookingDetails> CookingDetails => Set<CookingDetails>();
     public DbSet<CookingIngredient> CookingIngredients => Set<CookingIngredient>();
@@ -46,7 +49,91 @@ public sealed class MyDocuMgmDbContext(DbContextOptions<MyDocuMgmDbContext> opti
         ConfigureCategory(modelBuilder);
         ConfigureContent(modelBuilder);
         ConfigureChildren(modelBuilder);
+        ConfigureAnalysisRecommendations(modelBuilder);
         ConfigureDetails(modelBuilder);
+    }
+
+    private static void ConfigureAnalysisRecommendations(ModelBuilder modelBuilder)
+    {
+        var run = modelBuilder.Entity<AnalysisRecommendationRun>();
+        run.ToTable("AnalysisRecommendationRuns", table =>
+            table.HasCheckConstraint(
+                "CK_AnalysisRecommendationRuns_Status",
+                "[Status] IN ('REQUESTED','SUCCEEDED','PARTIALLY_SUCCEEDED','FAILED','CANCELLED')"));
+        run.HasKey(value => value.Id);
+        run.Property(value => value.Status).HasConversion<string>().HasMaxLength(30);
+        run.Property(value => value.ProviderIdentifier)
+            .HasMaxLength(AnalysisRecommendationRun.ProviderIdentifierMaxLength)
+            .IsRequired();
+        run.Property(value => value.ModelVersion)
+            .HasMaxLength(AnalysisRecommendationRun.ModelVersionMaxLength);
+        run.Property(value => value.IdempotencyKey)
+            .HasMaxLength(AnalysisRecommendationRun.IdempotencyKeyMaxLength)
+            .IsRequired();
+        run.Property(value => value.ErrorCode)
+            .HasMaxLength(AnalysisRecommendationRun.ErrorCodeMaxLength);
+        run.Property(value => value.RequestedAtUtc).HasColumnType("datetime2");
+        run.Property(value => value.CompletedAtUtc).HasColumnType("datetime2");
+        run.Property(value => value.RowVersion).IsRowVersion();
+        run.HasIndex(value => new { value.ContentId, value.IdempotencyKey }).IsUnique();
+        run.HasIndex(value => new { value.ContentId, value.RequestedAtUtc });
+        run.HasOne(value => value.Content)
+            .WithMany(value => value.AnalysisRecommendationRuns)
+            .HasForeignKey(value => value.ContentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var item = modelBuilder.Entity<AnalysisRecommendationItem>();
+        item.ToTable("AnalysisRecommendationItems", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_AnalysisRecommendationItems_Kind",
+                "[Kind] IN ('TITLE','SUMMARY','CATEGORY','TAG')");
+            table.HasCheckConstraint(
+                "CK_AnalysisRecommendationItems_Confidence",
+                "[Confidence] IN ('LOW','MEDIUM','HIGH')");
+            table.HasCheckConstraint(
+                "CK_AnalysisRecommendationItems_Decision",
+                "[Decision] IN ('PENDING','APPLIED','MODIFIED','REJECTED')");
+        });
+        item.HasKey(value => value.Id);
+        item.Property(value => value.Kind).HasConversion<string>().HasMaxLength(20);
+        item.Property(value => value.RecommendedValue)
+            .HasMaxLength(AnalysisRecommendationItem.RecommendedValueMaxLength)
+            .IsRequired();
+        item.Property(value => value.Reason)
+            .HasMaxLength(AnalysisRecommendationItem.ReasonMaxLength)
+            .IsRequired();
+        item.Property(value => value.Confidence).HasConversion<string>().HasMaxLength(20);
+        item.Property(value => value.Decision).HasConversion<string>().HasMaxLength(20);
+        item.Property(value => value.ModifiedValue)
+            .HasMaxLength(AnalysisRecommendationItem.ModifiedValueMaxLength);
+        item.Property(value => value.DecidedAtUtc).HasColumnType("datetime2");
+        item.HasIndex(value => new { value.RunId, value.Kind });
+        item.HasOne(value => value.Run)
+            .WithMany(value => value.Items)
+            .HasForeignKey(value => value.RunId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var evidence = modelBuilder.Entity<AnalysisRecommendationEvidence>();
+        evidence.ToTable("AnalysisRecommendationEvidence", table =>
+            table.HasCheckConstraint(
+                "CK_AnalysisRecommendationEvidence_Type",
+                "[EvidenceType] IN ('DETAIL_CONTENT','MANUAL_CAPTION','PINNED_AUTHOR_COMMENT','SOURCE_EVIDENCE')"));
+        evidence.HasKey(value => value.Id);
+        evidence.Property(value => value.EvidenceType).HasConversion<string>().HasMaxLength(40);
+        evidence.Property(value => value.Excerpt)
+            .HasMaxLength(AnalysisRecommendationEvidence.ExcerptMaxLength)
+            .IsRequired();
+        evidence.HasIndex(value => value.ItemId);
+        evidence.HasIndex(value => value.SourceEvidenceId);
+        evidence.HasOne(value => value.Item)
+            .WithMany(value => value.Evidence)
+            .HasForeignKey(value => value.ItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+        evidence.HasOne(value => value.SourceEvidence)
+            .WithMany()
+            .HasForeignKey(value => value.SourceEvidenceId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 
     private static void ConfigureCategory(ModelBuilder modelBuilder)
