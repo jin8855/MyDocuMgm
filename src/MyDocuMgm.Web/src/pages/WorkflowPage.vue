@@ -268,6 +268,13 @@ async function persistAnalysisReview(complete: boolean): Promise<boolean> {
   }
 }
 
+function applyRecommendationSaved(updated: ContentItem) {
+  content.value = updated
+  analysisTitle.value = updated.title
+  analysisSummary.value = updated.shortSummary ?? ''
+  dirty.value = false
+}
+
 function selectCategory(value: string) {
   categoryEditCategoryId.value = value
   const code = categoryOptions.value.find(category => category.id === value)?.code
@@ -754,7 +761,8 @@ watch(() => [props.id, props.step], load, { immediate: true })
       <p>새 자료 수집은 이전 작업의 데이터와 연결되지 않습니다. URL 단계부터 새 내용을 입력해 주세요.</p>
     </section>
     <AnalysisReviewStage
-      v-else-if="current === 'ANALYSIS_REVIEW' && analysisIntake"
+      v-else-if="current === 'ANALYSIS_REVIEW' && analysisIntake && content"
+      :content="content"
       :title="analysisTitle"
       :short-summary="analysisSummary"
       :intake="analysisIntake"
@@ -762,6 +770,7 @@ watch(() => [props.id, props.step], load, { immediate: true })
       @title="analysisTitle = $event"
       @summary="analysisSummary = $event"
       @dirty="markDirty"
+      @recommendation-saved="applyRecommendationSaved"
     />
 
     <template v-else-if="current === 'CATEGORY_EDIT' && categoryEdit">

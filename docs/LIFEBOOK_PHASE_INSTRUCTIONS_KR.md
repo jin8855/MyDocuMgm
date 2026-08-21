@@ -200,6 +200,8 @@ Phase 1 범위만 구현하세요.
 - 수동 붙여넣기·파일 선택 대체 입력
 - 분석 검토 후 기존 콘텐츠 저장 흐름 연결
 
+> Phase 2D 승인 보완(2026-08-21): `docs/MYDOCUMGM_PHASE2D_RECOMMENDATION_CONTRACT_KR.md`의 P2D-D01~D05가 추천 기반의 권위 계약이다. 이번 Phase 2D에서는 provider-agnostic 추천·결정 감사 기반만 구현하고 실제 외부 AI 연동, 자동 자막·댓글 수집 및 `ImportJobs`는 유보한다. `ExternalFetchAttempts`는 HTTP 요청별 시도 기록으로 유지하며 `ImportJobs`의 대체로 간주하지 않는다. 향후 전체 가져오기 orchestration이 별도 승인될 때 `ImportJobs`를 재검토한다.
+
 ### 제외
 
 - 접근제한·로그인·비공개 콘텐츠 우회

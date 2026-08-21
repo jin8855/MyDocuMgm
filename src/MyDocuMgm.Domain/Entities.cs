@@ -69,6 +69,7 @@ public sealed class Content
     public ICollection<ContentMediaLink> LinkedMedia { get; set; } = [];
     public ICollection<SourceEvidence> SourceEvidence { get; set; } = [];
     public ICollection<ExternalFetchAttempt> ExternalFetchAttempts { get; set; } = [];
+    public ICollection<AnalysisRecommendationRun> AnalysisRecommendationRuns { get; set; } = [];
     public PlaceDetails? PlaceDetails { get; set; }
     public CookingDetails? CookingDetails { get; set; }
     public ExerciseDetails? ExerciseDetails { get; set; }

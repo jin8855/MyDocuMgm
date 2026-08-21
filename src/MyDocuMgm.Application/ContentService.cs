@@ -32,7 +32,7 @@ public sealed class ContentService(IContentRepository repository)
             ExperienceStatus = request.ExperienceStatus
         };
         content.SetStatus(request.Status);
-        await ReplaceTagsAsync(content, request.Tags, cancellationToken);
+        await ContentTagUpdater.ReplaceAsync(content, request.Tags, repository, cancellationToken);
         await repository.AddAsync(content, cancellationToken);
         await repository.SaveChangesAsync(cancellationToken);
         return Map(content);
@@ -52,7 +52,7 @@ public sealed class ContentService(IContentRepository repository)
         content.IsFavorite = request.IsFavorite;
         content.ExperienceStatus = request.ExperienceStatus;
         content.SetStatus(request.Status);
-        await ReplaceTagsAsync(content, request.Tags, cancellationToken);
+        await ContentTagUpdater.ReplaceAsync(content, request.Tags, repository, cancellationToken);
         await repository.SaveChangesAsync(cancellationToken);
         return Map(content);
     }
@@ -73,50 +73,6 @@ public sealed class ContentService(IContentRepository repository)
         content.Restore();
         await repository.SaveChangesAsync(cancellationToken);
         return Map(content);
-    }
-
-    private async Task ReplaceTagsAsync(Content content, IReadOnlyList<string>? names, CancellationToken cancellationToken)
-    {
-        var requested = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var name in names?.Where(value => !string.IsNullOrWhiteSpace(value)) ?? [])
-        {
-            var trimmed = name.Trim();
-            var normalized = TagNormalizer.Normalize(name);
-            if (trimmed.Length > 80 || normalized.Length > 80)
-            {
-                throw new DomainRuleException("INVALID_TAG", "태그는 1~80자여야 합니다.");
-            }
-
-            requested.TryAdd(normalized, trimmed);
-        }
-
-        var existing = content.ContentTags.ToDictionary(
-            link => link.Tag.NormalizedName,
-            StringComparer.Ordinal);
-
-        foreach (var link in content.ContentTags
-                     .Where(link => !requested.ContainsKey(link.Tag.NormalizedName))
-                     .ToArray())
-        {
-            content.ContentTags.Remove(link);
-        }
-
-        foreach (var (normalized, displayName) in requested)
-        {
-            if (existing.ContainsKey(normalized))
-            {
-                continue;
-            }
-
-            var tag = await repository.FindTagAsync(normalized, cancellationToken);
-            if (tag is null)
-            {
-                tag = new Tag { Name = displayName, NormalizedName = normalized };
-                await repository.AddTagAsync(tag, cancellationToken);
-            }
-
-            content.ContentTags.Add(new ContentTag { Content = content, ContentId = content.Id, Tag = tag, TagId = tag.Id });
-        }
     }
 
     private static void Validate(SaveContentRequest request, bool isUpdate)

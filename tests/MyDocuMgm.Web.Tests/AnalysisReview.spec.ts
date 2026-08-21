@@ -2,7 +2,7 @@ import { createApp, nextTick } from 'vue'
 import { router } from '../../src/MyDocuMgm.Web/src/app/router'
 import AnalysisReviewStage from '../../src/MyDocuMgm.Web/src/features/analysis-review/AnalysisReviewStage.vue'
 import { api } from '../../src/MyDocuMgm.Web/src/shared/api/client'
-import type { UrlIntake } from '../../src/MyDocuMgm.Web/src/shared/types'
+import type { ContentItem, UrlIntake } from '../../src/MyDocuMgm.Web/src/shared/types'
 
 async function flush() {
   await Promise.resolve()
@@ -179,7 +179,14 @@ describe('Phase 2B manual analysis review', () => {
       linkedMediaIds: [],
     }
     const host = document.createElement('div')
+    const content: ContentItem = {
+      id: intake.id, categoryId: '10000000-0000-0000-0000-000000000011', categoryCode: 'OTHER', categoryDisplayName: '기타',
+      title: '검토 제목', shortSummary: '검토 요약', detailContent: null, status: 'REVIEW_REQUIRED', visibility: 'PRIVATE',
+      isFavorite: false, experienceStatus: 'NONE', currentWorkflowStep: 'ANALYSIS_REVIEW', blogDraftStatus: '미작성',
+      updatedAtUtc: new Date().toISOString(), createdAtUtc: new Date().toISOString(), rowVersion: 'AQID', tags: [],
+    }
     const app = createApp(AnalysisReviewStage, {
+      content,
       title: '검토 제목',
       shortSummary: '검토 요약',
       intake,

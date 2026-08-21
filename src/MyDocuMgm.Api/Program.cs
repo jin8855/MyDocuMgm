@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using MyDocuMgm.Application;
+using MyDocuMgm.Application.AnalysisRecommendations;
 using MyDocuMgm.Application.ExternalFetch;
 using MyDocuMgm.Domain;
 using MyDocuMgm.Infrastructure;
@@ -26,6 +27,8 @@ app.UseExceptionHandler(errorApp =>
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
         var (status, title, code) = exception switch
         {
+            AnalysisRecommendationException recommendation =>
+                (AnalysisRecommendationStatus(recommendation.Kind), recommendation.Message, recommendation.Code),
             ExternalFetchException fetch => (ExternalFetchStatus(fetch.Kind), fetch.Message, fetch.Code),
             MediaOperationException media => (MediaStatus(media.Code), media.Message, media.Code),
             NotFoundException => (StatusCodes.Status404NotFound, "대상을 찾을 수 없습니다.", "NOT_FOUND"),
@@ -40,7 +43,7 @@ app.UseExceptionHandler(errorApp =>
         {
             Status = status,
             Title = title,
-            Detail = exception is ExternalFetchException or MediaOperationException or DomainRuleException or InvalidDataException or ConcurrencyConflictException
+            Detail = exception is AnalysisRecommendationException or ExternalFetchException or MediaOperationException or DomainRuleException or InvalidDataException or ConcurrencyConflictException
                 ? exception.Message
                 : null,
             Extensions = { ["code"] = code }
@@ -104,6 +107,14 @@ static int ExternalFetchStatus(ExternalFetchFailureKind kind) => kind switch
     ExternalFetchFailureKind.RETRY_LIMIT => StatusCodes.Status429TooManyRequests,
     ExternalFetchFailureKind.TIMEOUT => StatusCodes.Status504GatewayTimeout,
     _ => StatusCodes.Status502BadGateway
+};
+
+static int AnalysisRecommendationStatus(AnalysisRecommendationFailureKind kind) => kind switch
+{
+    AnalysisRecommendationFailureKind.UNAVAILABLE => StatusCodes.Status503ServiceUnavailable,
+    AnalysisRecommendationFailureKind.INVALID_RESPONSE => StatusCodes.Status502BadGateway,
+    AnalysisRecommendationFailureKind.CANCELLED => StatusCodes.Status409Conflict,
+    _ => StatusCodes.Status503ServiceUnavailable
 };
 
 public partial class Program;
