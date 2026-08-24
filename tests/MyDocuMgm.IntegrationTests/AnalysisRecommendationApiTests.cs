@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,66 @@ namespace MyDocuMgm.IntegrationTests;
 
 public sealed class AnalysisRecommendationApiTests
 {
+    [Fact]
+    public async Task ManualPromptAndImport_UseStrictHttpContract_AndDoNotCallProviderOrMutateContent()
+    {
+        var content = CreateContent();
+        var repository = new Repository(content);
+        using var factory = CreateFactory(repository, provider: null);
+        using var client = factory.CreateClient();
+
+        using var promptResponse = await client.PostAsJsonAsync(
+            $"/api/contents/{content.Id}/analysis-recommendations/manual-prompt",
+            new { includedEvidenceKinds = new[] { "CURRENT_TITLE", "CURRENT_SUMMARY", "DETAIL_CONTENT", "CURRENT_CATEGORY" } });
+        Assert.Equal(HttpStatusCode.OK, promptResponse.StatusCode);
+        var prompt = (await promptResponse.Content.ReadFromJsonAsync<ManualRecommendationPromptDto>())!;
+        Assert.Contains("외부 URL을 추가로 탐색하지 마세요", prompt.Prompt);
+        Assert.Empty(repository.Runs);
+
+        var raw = JsonSerializer.Serialize(new
+        {
+            schemaVersion = prompt.SchemaVersion,
+            sourceFingerprint = prompt.SourceFingerprint,
+            recommendations = new
+            {
+                title = new { value = "HTTP 추천 제목", reason = "E1 근거", confidence = "HIGH", evidenceIds = new[] { "E1" } },
+                summary = (object?)null,
+                category = new { value = "OTHER", reason = "E1 근거", confidence = "LOW", evidenceIds = new[] { "E1" } },
+                tags = (object?)null
+            }
+        });
+        using var importResponse = await client.PostAsJsonAsync(
+            $"/api/contents/{content.Id}/analysis-recommendations/manual-import",
+            new
+            {
+                schemaVersion = prompt.SchemaVersion,
+                sourceFingerprint = prompt.SourceFingerprint,
+                pastedResponse = raw,
+                idempotencyKey = "manual-http-import",
+                includedEvidenceIds = prompt.Evidence.Select(value => value.EvidenceId).ToArray()
+            });
+        var run = await importResponse.Content.ReadFromJsonAsync<AnalysisRecommendationRunDto>();
+
+        Assert.Equal(HttpStatusCode.OK, importResponse.StatusCode);
+        Assert.Equal(ManualAnalysisRecommendationService.Provenance, run!.ProviderIdentifier);
+        Assert.Equal(AnalysisRecommendationRunStatus.PARTIALLY_SUCCEEDED, run.Status);
+        Assert.Equal("기존 제목", content.Title);
+        Assert.Single(repository.Runs);
+
+        using var invalidResponse = await client.PostAsJsonAsync(
+            $"/api/contents/{content.Id}/analysis-recommendations/manual-import",
+            new
+            {
+                schemaVersion = prompt.SchemaVersion,
+                sourceFingerprint = prompt.SourceFingerprint,
+                pastedResponse = "not json",
+                idempotencyKey = "manual-http-invalid",
+                includedEvidenceIds = prompt.Evidence.Select(value => value.EvidenceId).ToArray()
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+        Assert.Single(repository.Runs);
+    }
+
     [Fact]
     public async Task DefaultProvider_FailsClosedWithSafeProblem_AndPersistsFailedAudit()
     {

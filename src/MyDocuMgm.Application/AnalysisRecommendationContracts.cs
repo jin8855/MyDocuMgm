@@ -22,6 +22,42 @@ public sealed class AnalysisRecommendationException(
 
 public sealed record RequestAnalysisRecommendationsRequest(string IdempotencyKey);
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ManualPromptEvidenceKind
+{
+    CURRENT_TITLE,
+    CURRENT_SUMMARY,
+    DETAIL_CONTENT,
+    MANUAL_CAPTION,
+    PINNED_AUTHOR_COMMENT,
+    SOURCE_EVIDENCE,
+    CURRENT_CATEGORY,
+    CURRENT_TAGS
+}
+
+public sealed record CreateManualRecommendationPromptRequest(
+    IReadOnlyList<ManualPromptEvidenceKind> IncludedEvidenceKinds);
+
+public sealed record ManualRecommendationPromptEvidenceDto(
+    string EvidenceId,
+    ManualPromptEvidenceKind Kind,
+    Guid? SourceEvidenceId,
+    string Label,
+    string Text);
+
+public sealed record ManualRecommendationPromptDto(
+    string SchemaVersion,
+    string SourceFingerprint,
+    string Prompt,
+    IReadOnlyList<ManualRecommendationPromptEvidenceDto> Evidence);
+
+public sealed record ImportManualAnalysisRecommendationsRequest(
+    string SchemaVersion,
+    string SourceFingerprint,
+    string PastedResponse,
+    string IdempotencyKey,
+    IReadOnlyList<string> IncludedEvidenceIds);
+
 public sealed record AnalysisRecommendationDecisionInput(
     Guid ItemId,
     [property: JsonConverter(typeof(JsonStringEnumConverter))]

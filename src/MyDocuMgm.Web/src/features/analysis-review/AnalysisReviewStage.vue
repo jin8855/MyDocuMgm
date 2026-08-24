@@ -9,6 +9,8 @@ import type {
   AnalysisRecommendationRun,
   Category,
   ContentItem,
+  ManualPromptEvidenceKind,
+  ManualRecommendationPrompt,
   UrlIntake,
 } from '../../shared/types'
 
@@ -32,12 +34,22 @@ type SelectableDecision = Exclude<AnalysisRecommendationDecision, 'PENDING'>
 const run = ref<AnalysisRecommendationRun | null>(null)
 const categories = ref<Category[]>([])
 const loadingLatest = ref(true)
-const requesting = ref(false)
+const buildingPrompt = ref(false)
+const importingResponse = ref(false)
 const saving = ref(false)
 const recommendationError = ref('')
 const recommendationNotice = ref('')
 const decisions = ref<Record<string, SelectableDecision | ''>>({})
 const modifiedValues = ref<Record<string, string>>({})
+const promptResult = ref<ManualRecommendationPrompt | null>(null)
+const promptText = ref('')
+const pastedResponse = ref('')
+const selectedEvidenceKinds = ref<ManualPromptEvidenceKind[]>([])
+
+const allEvidenceKinds: ManualPromptEvidenceKind[] = [
+  'CURRENT_TITLE', 'CURRENT_SUMMARY', 'DETAIL_CONTENT', 'MANUAL_CAPTION',
+  'PINNED_AUTHOR_COMMENT', 'SOURCE_EVIDENCE', 'CURRENT_CATEGORY', 'CURRENT_TAGS',
+]
 
 const presentation = computed(() => {
   if (props.intake.sourceKind === 'GENERIC' && props.intake.sourceAcquisitionMode === 'HTTP_METADATA') {
@@ -62,19 +74,12 @@ const presentation = computed(() => {
 
 const recommendationState = computed(() => {
   if (loadingLatest.value) return '이전 추천을 확인하는 중입니다.'
-  if (requesting.value) return '추천을 준비하는 중입니다.'
-  if (!run.value) return '아직 생성된 추천이 없습니다.'
+  if (buildingPrompt.value) return '현재 자료로 프롬프트를 만드는 중입니다.'
+  if (importingResponse.value) return '붙여넣은 답변을 확인하는 중입니다.'
+  if (!run.value) return '아직 가져온 추천이 없습니다.'
   if (run.value.status === 'FAILED' || run.value.status === 'CANCELLED') return ''
   if (run.value.status === 'PARTIALLY_SUCCEEDED') return '일부 항목만 추천되었습니다. 나머지는 직접 작성할 수 있습니다.'
   return `${run.value.items.length}개 추천을 검토할 수 있습니다.`
-})
-
-const recommendationAlert = computed(() => {
-  if (recommendationError.value) return recommendationError.value
-  if (run.value?.status === 'FAILED' || run.value?.status === 'CANCELLED') {
-    return '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.'
-  }
-  return ''
 })
 
 const missingRecommendationLabels = computed(() => {
@@ -94,7 +99,15 @@ function confidenceLabel(item: AnalysisRecommendationItem): string {
 }
 
 function evidenceLabel(type: string): string {
-  return { DETAIL_CONTENT: '현재 본문', MANUAL_CAPTION: '수동 Caption', PINNED_AUTHOR_COMMENT: '작성자 고정 댓글', SOURCE_EVIDENCE: '저장된 출처 근거' }[type] ?? '현재 자료'
+  return { DETAIL_CONTENT: '현재 자료', MANUAL_CAPTION: '수동 Caption', PINNED_AUTHOR_COMMENT: '작성자 고정 댓글', SOURCE_EVIDENCE: '저장된 출처 근거' }[type] ?? '현재 자료'
+}
+
+function promptEvidenceLabel(kind: ManualPromptEvidenceKind): string {
+  return {
+    CURRENT_TITLE: '현재 제목', CURRENT_SUMMARY: '현재 요약', DETAIL_CONTENT: '일반 URL 본문',
+    MANUAL_CAPTION: '수동 입력 Caption', PINNED_AUTHOR_COMMENT: '수동 작성자 고정 댓글',
+    SOURCE_EVIDENCE: '기존 SourceEvidence', CURRENT_CATEGORY: '현재 분류', CURRENT_TAGS: '현재 태그',
+  }[kind]
 }
 
 function displayValue(item: AnalysisRecommendationItem): string {
@@ -130,23 +143,72 @@ async function loadLatest() {
   }
 }
 
-async function requestRecommendations() {
-  if (requesting.value) return
-  requesting.value = true
+async function buildPrompt() {
+  if (buildingPrompt.value) return
+  buildingPrompt.value = true
   recommendationError.value = ''
   recommendationNotice.value = ''
   try {
-    run.value = await api.requestAnalysisRecommendations(props.content.id, crypto.randomUUID())
-    resetDecisionDraft(run.value)
+    const kinds = promptResult.value ? selectedEvidenceKinds.value : allEvidenceKinds
+    const result = await api.createManualRecommendationPrompt(props.content.id, kinds)
+    promptResult.value = result
+    promptText.value = result.prompt
+    selectedEvidenceKinds.value = [...new Set(result.evidence.map(value => value.kind))]
+    pastedResponse.value = ''
+    recommendationNotice.value = '프롬프트를 만들었습니다. 내용을 확인하고 필요한 부분을 직접 수정하세요.'
   } catch (error) {
-    recommendationError.value = error instanceof Error ? error.message : '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.'
-    try {
-      run.value = await api.latestAnalysisRecommendations(props.content.id)
-      resetDecisionDraft(run.value)
-    } catch { /* 최초 오류를 유지한다. */ }
+    recommendationError.value = error instanceof Error ? error.message : '분석 프롬프트를 만들지 못했습니다.'
   } finally {
-    requesting.value = false
+    buildingPrompt.value = false
   }
+}
+
+function toggleEvidence(kind: ManualPromptEvidenceKind, checked: boolean) {
+  selectedEvidenceKinds.value = checked
+    ? [...new Set([...selectedEvidenceKinds.value, kind])]
+    : selectedEvidenceKinds.value.filter(value => value !== kind)
+  recommendationNotice.value = '포함 자료가 변경되었습니다. 프롬프트를 다시 만들어 주세요.'
+}
+
+async function copyPrompt() {
+  recommendationError.value = ''
+  recommendationNotice.value = ''
+  try {
+    await navigator.clipboard.writeText(promptText.value)
+    recommendationNotice.value = '프롬프트를 클립보드에 복사했습니다.'
+  } catch {
+    recommendationError.value = '클립보드에 복사하지 못했습니다. 프롬프트 텍스트를 직접 선택해 복사해 주세요.'
+  }
+}
+
+async function importResponse() {
+  if (!promptResult.value || importingResponse.value) return
+  importingResponse.value = true
+  recommendationError.value = ''
+  recommendationNotice.value = ''
+  try {
+    run.value = await api.importManualAnalysisRecommendations(props.content.id, {
+      schemaVersion: promptResult.value.schemaVersion,
+      sourceFingerprint: promptResult.value.sourceFingerprint,
+      pastedResponse: pastedResponse.value,
+      idempotencyKey: crypto.randomUUID(),
+      includedEvidenceIds: promptResult.value.evidence.map(value => value.evidenceId),
+    })
+    resetDecisionDraft(run.value)
+    recommendationNotice.value = run.value.items.length
+      ? '답변 형식을 확인했습니다. 추천별로 적용, 수정 또는 사용 안 함을 선택하세요.'
+      : '답변 형식은 유효하지만 제공된 추천 항목이 없습니다. 직접 작성으로 계속할 수 있습니다.'
+  } catch (error) {
+    recommendationError.value = error instanceof Error ? error.message : '붙여넣은 답변을 확인하지 못했습니다.'
+  } finally {
+    importingResponse.value = false
+  }
+}
+
+function clearResponse() {
+  pastedResponse.value = ''
+  recommendationError.value = ''
+  recommendationNotice.value = ''
 }
 
 function choose(item: AnalysisRecommendationItem, decision: SelectableDecision) {
@@ -219,15 +281,48 @@ onMounted(loadLatest)
       <div class="section-title compact">
         <div>
           <span class="eyebrow">선택 기능</span>
-          <div class="inline-heading"><h3 id="recommendation-heading">분석 추천</h3><HelpPopover label="분석 추천 도움말">추천 확신은 정확한 확률이 아니라 근거가 충분한지를 높음·보통·낮음으로 나타냅니다. 추천은 현재 값을 자동으로 바꾸지 않으며 최종 결정은 사용자가 합니다.</HelpPopover></div>
+          <div class="inline-heading"><h3 id="recommendation-heading">수동 AI 추천 가져오기</h3><HelpPopover label="분석 추천 도움말">MyDocuMgm은 AI 서비스로 자료를 자동 전송하지 않습니다. 추천 확신은 정확한 확률이 아니라 근거가 충분한지를 높음·보통·낮음으로 나타냅니다. 최종 결정은 사용자가 합니다.</HelpPopover></div>
           <p v-if="recommendationState">{{ recommendationState }}</p>
         </div>
-        <button class="button secondary" type="button" :disabled="requesting" @click="requestRecommendations">
-          {{ requesting ? '추천 중…' : run ? '새 추천 요청' : '추천 요청' }}
+        <button class="button secondary" type="button" :disabled="buildingPrompt" @click="buildPrompt">
+          {{ buildingPrompt ? '프롬프트 만드는 중…' : promptResult ? '프롬프트 다시 만들기' : '분석 프롬프트 만들기' }}
         </button>
       </div>
 
-      <p v-if="recommendationAlert" class="media-error" role="alert">{{ recommendationAlert }}</p>
+      <p class="manual-ai-boundary">MyDocuMgm은 AI 서비스로 자료를 자동 전송하지 않습니다.</p>
+
+      <section v-if="promptResult" class="manual-prompt-flow" aria-labelledby="prompt-preview-heading">
+        <fieldset class="prompt-evidence-options">
+          <legend>포함 자료 선택</legend>
+          <label v-for="kind in [...new Set(promptResult.evidence.map(value => value.kind))]" :key="kind">
+            <input
+              type="checkbox"
+              :checked="selectedEvidenceKinds.includes(kind)"
+              @change="toggleEvidence(kind, ($event.target as HTMLInputElement).checked)"
+            />
+            {{ promptEvidenceLabel(kind) }}
+          </label>
+        </fieldset>
+
+        <label id="prompt-preview-heading" for="manual-prompt-preview">프롬프트 미리보기</label>
+        <textarea id="manual-prompt-preview" v-model="promptText" rows="12" spellcheck="false" />
+        <p class="manual-ai-warning">복사한 내용을 외부 AI 도구에 붙여 넣으면 해당 서비스로 전송됩니다. 전송 전에 개인정보와 불필요한 내용을 확인하세요.</p>
+        <div class="manual-prompt-actions">
+          <button class="button secondary" type="button" @click="copyPrompt">프롬프트 복사</button>
+        </div>
+
+        <label for="manual-ai-response">외부 AI 도구의 답변을 붙여넣으세요</label>
+        <textarea id="manual-ai-response" v-model="pastedResponse" rows="10" spellcheck="false" placeholder='{"schemaVersion":"mydocumgm.analysis-recommendation.v1", ...}' />
+        <div class="manual-prompt-actions">
+          <button class="button" type="button" :disabled="importingResponse || !pastedResponse.trim()" @click="importResponse">
+            {{ importingResponse ? '확인 중…' : '답변 확인' }}
+          </button>
+          <button class="button secondary" type="button" :disabled="!pastedResponse" @click="clearResponse">다시 지우기</button>
+          <button class="button ghost" type="button" @click="continueManually">수동으로 계속 작성</button>
+        </div>
+      </section>
+
+      <p v-if="recommendationError" class="media-error" role="alert">{{ recommendationError }}</p>
       <p v-if="recommendationNotice" class="media-success" role="status">{{ recommendationNotice }}</p>
       <p v-if="missingRecommendationLabels.length" class="recommendation-missing" role="status">
         추천 없음: {{ missingRecommendationLabels.join(', ') }}
@@ -274,7 +369,7 @@ onMounted(loadLatest)
       </div>
 
       <div class="recommendation-actions">
-        <button type="button" class="button ghost" @click="continueManually">수동으로 계속 작성</button>
+        <button v-if="!promptResult" type="button" class="button ghost" @click="continueManually">수동으로 계속 작성</button>
         <button v-if="run && run.items.some(item => item.decision === 'PENDING')" type="button" class="button" :disabled="saving" @click="saveDecisions">{{ saving ? '결정 저장 중…' : '선택한 결정 저장' }}</button>
       </div>
     </section>

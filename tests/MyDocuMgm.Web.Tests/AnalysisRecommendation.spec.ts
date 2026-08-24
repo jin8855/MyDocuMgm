@@ -1,7 +1,7 @@
 import { createApp, nextTick } from 'vue'
 import AnalysisReviewStage from '../../src/MyDocuMgm.Web/src/features/analysis-review/AnalysisReviewStage.vue'
 import { ApiError, api } from '../../src/MyDocuMgm.Web/src/shared/api/client'
-import type { AnalysisRecommendationRun, Category, ContentItem, UrlIntake } from '../../src/MyDocuMgm.Web/src/shared/types'
+import type { AnalysisRecommendationRun, Category, ContentItem, ManualRecommendationPrompt, UrlIntake } from '../../src/MyDocuMgm.Web/src/shared/types'
 
 async function flush() {
   await Promise.resolve()
@@ -58,6 +58,18 @@ function recommendation(contentId: string, status: AnalysisRecommendationRun['st
   }
 }
 
+function manualPrompt(): ManualRecommendationPrompt {
+  return {
+    schemaVersion: 'mydocumgm.analysis-recommendation.v1',
+    sourceFingerprint: 'ABC123',
+    prompt: '검토 가능한 전체 프롬프트',
+    evidence: [
+      { evidenceId: 'E1', kind: 'CURRENT_TITLE', sourceEvidenceId: null, label: '현재 제목', text: '현재 제목' },
+      { evidenceId: 'E2', kind: 'DETAIL_CONTENT', sourceEvidenceId: null, label: '일반 URL 본문', text: '현재 본문' },
+    ],
+  }
+}
+
 describe('Phase 2D recommendation review', () => {
   afterEach(() => vi.restoreAllMocks())
 
@@ -66,7 +78,8 @@ describe('Phase 2D recommendation review', () => {
     const generated = recommendation(current.id)
     vi.spyOn(api, 'latestAnalysisRecommendations').mockResolvedValue(null)
     vi.spyOn(api, 'categories').mockResolvedValue([category])
-    vi.spyOn(api, 'requestAnalysisRecommendations').mockResolvedValue(generated)
+    vi.spyOn(api, 'createManualRecommendationPrompt').mockResolvedValue(manualPrompt())
+    const importResponse = vi.spyOn(api, 'importManualAnalysisRecommendations').mockResolvedValue(generated)
     const updated = { ...current, title: '사용자 수정 제목' }
     const decidedRun = structuredClone(generated)
     decidedRun.items[0].decision = 'MODIFIED'
@@ -91,8 +104,17 @@ describe('Phase 2D recommendation review', () => {
     await flush()
     expect(host.textContent).not.toContain('추천 확신은 정확한 확률이 아니라')
 
-    clickByText(host, '추천 요청')
+    clickByText(host, '분석 프롬프트 만들기')
     await flush()
+    expect(host.querySelector<HTMLTextAreaElement>('#manual-prompt-preview')?.value).toBe('검토 가능한 전체 프롬프트')
+    setValue(host.querySelector<HTMLTextAreaElement>('#manual-ai-response')!, '{"valid":true}')
+    await flush()
+    clickByText(host, '답변 확인')
+    await flush()
+    expect(importResponse).toHaveBeenCalledWith(current.id, expect.objectContaining({
+      schemaVersion: 'mydocumgm.analysis-recommendation.v1', sourceFingerprint: 'ABC123',
+      pastedResponse: '{"valid":true}', includedEvidenceIds: ['E1', 'E2'],
+    }))
     expect(host.querySelectorAll('.recommendation-card')).toHaveLength(4)
     expect(host.textContent).toContain('추천 확신 높음')
     expect(host.textContent).toContain('추천 확신 보통')
@@ -118,14 +140,13 @@ describe('Phase 2D recommendation review', () => {
     app.unmount()
   })
 
-  it('shows the fail-closed fallback and keeps manual editing available', async () => {
+  it('copies only on explicit action, reports clipboard failure, and keeps manual editing available', async () => {
     const current = content()
-    const failed = recommendation(current.id, 'FAILED')
-    vi.spyOn(api, 'latestAnalysisRecommendations').mockResolvedValueOnce(null).mockResolvedValueOnce(failed)
+    vi.spyOn(api, 'latestAnalysisRecommendations').mockResolvedValue(null)
     vi.spyOn(api, 'categories').mockResolvedValue([category])
-    vi.spyOn(api, 'requestAnalysisRecommendations').mockRejectedValue(new ApiError(
-      'ANALYSIS_PROVIDER_NOT_CONNECTED', '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.',
-    ))
+    vi.spyOn(api, 'createManualRecommendationPrompt').mockResolvedValue(manualPrompt())
+    const writeText = vi.fn().mockRejectedValue(new Error('clipboard denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     const host = document.createElement('div')
     document.body.append(host)
     const app = createApp(AnalysisReviewStage, {
@@ -134,16 +155,80 @@ describe('Phase 2D recommendation review', () => {
     app.mount(host)
     await flush()
 
-    clickByText(host, '추천 요청')
+    expect(writeText).not.toHaveBeenCalled()
+    clickByText(host, '분석 프롬프트 만들기')
     await flush()
-    const providerMessage = '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.'
-    expect(host.textContent?.split(providerMessage)).toHaveLength(2)
+    expect(writeText).not.toHaveBeenCalled()
+    expect(host.textContent?.split('복사한 내용을 외부 AI 도구에 붙여 넣으면 해당 서비스로 전송됩니다.')).toHaveLength(2)
+    clickByText(host, '프롬프트 복사')
+    await flush()
+    expect(writeText).toHaveBeenCalledWith('검토 가능한 전체 프롬프트')
     expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1)
-    expect(host.querySelector('[role="alert"]')?.textContent?.trim()).toBe(providerMessage)
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('텍스트를 직접 선택해 복사해 주세요')
     clickByText(host, '수동으로 계속 작성')
     expect(document.activeElement).toBe(host.querySelector('#analysis-title'))
     app.unmount()
     host.remove()
+  })
+
+  it('regenerates after evidence deselection and copies the edited prompt only on click', async () => {
+    const current = content()
+    vi.spyOn(api, 'latestAnalysisRecommendations').mockResolvedValue(null)
+    vi.spyOn(api, 'categories').mockResolvedValue([category])
+    const promptApi = vi.spyOn(api, 'createManualRecommendationPrompt').mockResolvedValue(manualPrompt())
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const host = document.createElement('div')
+    const app = createApp(AnalysisReviewStage, {
+      content: current, title: current.title, shortSummary: current.shortSummary ?? '', intake: intake(current.id),
+    })
+    app.mount(host)
+    await flush()
+
+    clickByText(host, '분석 프롬프트 만들기')
+    await flush()
+    const titleCheckbox = [...host.querySelectorAll<HTMLInputElement>('.prompt-evidence-options input')]
+      .find(value => value.parentElement?.textContent?.includes('현재 제목'))!
+    titleCheckbox.checked = false
+    titleCheckbox.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+    clickByText(host, '프롬프트 다시 만들기')
+    await flush()
+    expect(promptApi).toHaveBeenLastCalledWith(current.id, ['DETAIL_CONTENT'])
+
+    setValue(host.querySelector<HTMLTextAreaElement>('#manual-prompt-preview')!, '사용자가 마스킹한 프롬프트')
+    await flush()
+    expect(writeText).not.toHaveBeenCalled()
+    clickByText(host, '프롬프트 복사')
+    await flush()
+    expect(writeText).toHaveBeenCalledWith('사용자가 마스킹한 프롬프트')
+    app.unmount()
+  })
+
+  it('shows a stale fingerprint validation error without changing current values', async () => {
+    const current = content()
+    vi.spyOn(api, 'latestAnalysisRecommendations').mockResolvedValue(null)
+    vi.spyOn(api, 'categories').mockResolvedValue([category])
+    vi.spyOn(api, 'createManualRecommendationPrompt').mockResolvedValue(manualPrompt())
+    vi.spyOn(api, 'importManualAnalysisRecommendations').mockRejectedValue(new ApiError(
+      'MANUAL_RESPONSE_SOURCE_STALE', '프롬프트 생성 후 자료가 변경되었습니다. 새 프롬프트를 만들어 주세요.',
+    ))
+    const host = document.createElement('div')
+    const app = createApp(AnalysisReviewStage, {
+      content: current, title: current.title, shortSummary: current.shortSummary ?? '', intake: intake(current.id),
+    })
+    app.mount(host)
+    await flush()
+    clickByText(host, '분석 프롬프트 만들기')
+    await flush()
+    setValue(host.querySelector<HTMLTextAreaElement>('#manual-ai-response')!, '{}')
+    await flush()
+    clickByText(host, '답변 확인')
+    await flush()
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('프롬프트 생성 후 자료가 변경되었습니다.')
+    expect(current.title).toBe('현재 제목')
+    app.unmount()
   })
 
   it('preserves the current content when decision save has a concurrency conflict', async () => {

@@ -19,6 +19,8 @@ import type {
   MediaPage,
   MediaSort,
   MediaUploadResult,
+  ManualPromptEvidenceKind,
+  ManualRecommendationPrompt,
   LinkableMediaPage,
   OrphanMediaItem,
   PinnedAuthorCommentState,
@@ -187,6 +189,7 @@ const externalFetchAttempts = new Map<string, ExternalFetchAttempt[]>()
 const externalBlogReuseConfirmations = new Set<string>()
 const analysisRecommendationRuns = new Map<string, AnalysisRecommendationRun[]>()
 const analysisRecommendationIdempotency = new Map<string, AnalysisRecommendationRun>()
+const manualPromptByContent = new Map<string, ManualRecommendationPrompt>()
 
 function mockGuid(): string {
   return crypto.randomUUID()
@@ -904,6 +907,95 @@ export const api = {
         '추천 기능이 아직 연결되지 않았습니다. 직접 작성으로 계속할 수 있습니다.',
       )
     }
+    return cloneValue(run)
+  },
+  async createManualRecommendationPrompt(
+    contentId: string,
+    includedEvidenceKinds: ManualPromptEvidenceKind[],
+  ): Promise<ManualRecommendationPrompt> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-recommendations/manual-prompt`, {
+        method: 'POST',
+        body: JSON.stringify({ includedEvidenceKinds }),
+      })
+    }
+    const item = contents.find(value => value.id === contentId)
+    if (!item) throw new ApiError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.')
+    const intake = urlIntakes.get(contentId)
+    const candidates = [
+      ['CURRENT_TITLE', '현재 제목', item.title],
+      ['CURRENT_SUMMARY', '현재 요약', item.shortSummary],
+      ['DETAIL_CONTENT', '일반 URL 본문', item.detailContent ?? intake?.manualBody],
+      ['MANUAL_CAPTION', '수동 입력 Caption', intake?.manualCaption],
+      ['PINNED_AUTHOR_COMMENT', '수동 작성자 고정 댓글', intake?.pinnedAuthorCommentText],
+      ['CURRENT_CATEGORY', '현재 분류', `${item.categoryCode} / ${item.categoryDisplayName}`],
+      ['CURRENT_TAGS', '현재 태그', item.tags.join(', ')],
+    ] as const
+    const evidence = candidates
+      .filter(([kind, , text]) => includedEvidenceKinds.includes(kind) && Boolean(text?.trim()))
+      .map(([kind, label, text], index) => ({ evidenceId: `E${index + 1}`, kind, sourceEvidenceId: null, label, text: text! }))
+    if (!evidence.length) throw new ApiError('MANUAL_PROMPT_EVIDENCE_EMPTY', '선택한 항목에 현재 저장된 자료가 없습니다.')
+    const sourceFingerprint = `MOCK-${item.rowVersion}-${evidence.map(value => value.kind).join('-')}`
+    const prompt = `MyDocuMgm 분석 추천 요청\nschemaVersion: mydocumgm.analysis-recommendation.v1\nsourceFingerprint: ${sourceFingerprint}\n입력 자료:\n${JSON.stringify(evidence)}`
+    const result = { schemaVersion: 'mydocumgm.analysis-recommendation.v1', sourceFingerprint, prompt, evidence }
+    manualPromptByContent.set(contentId, result)
+    return cloneValue(result)
+  },
+  async importManualAnalysisRecommendations(
+    contentId: string,
+    input: { schemaVersion: string; sourceFingerprint: string; pastedResponse: string; idempotencyKey: string; includedEvidenceIds: string[] },
+  ): Promise<AnalysisRecommendationRun> {
+    if (!mockEnabled) {
+      return request(`${contentPath(contentId)}/analysis-recommendations/manual-import`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+    }
+    const item = contents.find(value => value.id === contentId)
+    const prompt = manualPromptByContent.get(contentId)
+    if (!item || !prompt) throw new ApiError('MANUAL_RESPONSE_SOURCE_STALE', '새 프롬프트를 만들어 주세요.')
+    if (input.sourceFingerprint !== prompt.sourceFingerprint) throw new ApiError('MANUAL_RESPONSE_SOURCE_STALE', '프롬프트 생성 후 자료가 변경되었습니다. 새 프롬프트를 만들어 주세요.')
+    const key = `${contentId}:${input.idempotencyKey}`
+    const existing = analysisRecommendationIdempotency.get(key)
+    if (existing) return cloneValue(existing)
+    let payload: any
+    try {
+      const trimmed = input.pastedResponse.trim()
+      const match = trimmed.match(/^```json\s*([\s\S]*?)\s*```$/)
+      payload = JSON.parse(match ? match[1] : trimmed)
+    } catch {
+      throw new ApiError('MANUAL_RESPONSE_JSON_INVALID', 'JSON 형식을 확인해 주세요.')
+    }
+    if (payload.schemaVersion !== prompt.schemaVersion || payload.sourceFingerprint !== prompt.sourceFingerprint) {
+      throw new ApiError('MANUAL_RESPONSE_SOURCE_STALE', '프롬프트 생성 후 자료가 변경되었습니다. 새 프롬프트를 만들어 주세요.')
+    }
+    const byId = new Map(prompt.evidence.map(value => [value.evidenceId, value]))
+    const recommendations = payload.recommendations ?? {}
+    const evidenceFor = (value: any) => (value?.evidenceIds ?? []).map((id: string) => {
+      const found = byId.get(id)
+      if (!found || !input.includedEvidenceIds.includes(id)) throw new ApiError('MANUAL_RESPONSE_EVIDENCE_INVALID', '추천 근거가 존재하지 않는 자료 번호를 참조합니다.')
+      const evidenceType = found.kind === 'MANUAL_CAPTION' ? 'MANUAL_CAPTION' : found.kind === 'PINNED_AUTHOR_COMMENT' ? 'PINNED_AUTHOR_COMMENT' : found.kind === 'SOURCE_EVIDENCE' ? 'SOURCE_EVIDENCE' : 'DETAIL_CONTENT'
+      return { evidenceType, sourceEvidenceId: found.sourceEvidenceId, excerpt: found.text.slice(0, 500) }
+    })
+    const now = new Date().toISOString()
+    const values: Array<[AnalysisRecommendationRun['items'][number]['kind'], any]> = [
+      ['TITLE', recommendations.title], ['SUMMARY', recommendations.summary], ['CATEGORY', recommendations.category],
+    ]
+    const items = values.filter(([, value]) => value).map(([kind, value]) => ({
+      id: mockGuid(), kind, recommendedValue: kind === 'CATEGORY' ? categories.find(category => category.code === value.value)?.id ?? value.value : value.value,
+      reason: value.reason, confidence: value.confidence, decision: 'PENDING' as const, modifiedValue: null, decidedAtUtc: null, evidence: evidenceFor(value),
+    }))
+    if (recommendations.tags) for (const tag of [...new Set<string>(recommendations.tags.value)]) items.push({
+      id: mockGuid(), kind: 'TAG', recommendedValue: tag, reason: recommendations.tags.reason, confidence: recommendations.tags.confidence,
+      decision: 'PENDING', modifiedValue: null, decidedAtUtc: null, evidence: evidenceFor(recommendations.tags),
+    })
+    const run: AnalysisRecommendationRun = {
+      id: mockGuid(), contentId, requestedAtUtc: now, completedAtUtc: now,
+      status: new Set(items.map(value => value.kind)).size === 4 ? 'SUCCEEDED' : 'PARTIALLY_SUCCEEDED',
+      providerIdentifier: 'MANUAL_COPY_PASTE', modelVersion: prompt.schemaVersion, errorCode: null, rowVersion, items,
+    }
+    analysisRecommendationRuns.set(contentId, [run, ...(analysisRecommendationRuns.get(contentId) ?? [])])
+    analysisRecommendationIdempotency.set(key, run)
     return cloneValue(run)
   },
   async latestAnalysisRecommendations(contentId: string): Promise<AnalysisRecommendationRun | null> {

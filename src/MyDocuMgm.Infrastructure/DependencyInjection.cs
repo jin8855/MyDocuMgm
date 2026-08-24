@@ -119,6 +119,7 @@ public static class DependencyInjection
         services.AddSingleton<IHtmlContentExtractor, HtmlContentExtractor>();
         services.AddScoped<ExternalFetchService>();
         services.AddScoped<AnalysisRecommendationService>();
+        services.AddScoped<ManualAnalysisRecommendationService>();
         services.AddSingleton<IAnalysisRecommendationProvider, UnavailableAnalysisRecommendationProvider>();
         services.AddSingleton<IExternalPageFetcher>(provider =>
             {

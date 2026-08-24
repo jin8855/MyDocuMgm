@@ -16,6 +16,22 @@ export type AnalysisRecommendationKind = 'TITLE' | 'SUMMARY' | 'CATEGORY' | 'TAG
 export type AnalysisRecommendationConfidence = 'LOW' | 'MEDIUM' | 'HIGH'
 export type AnalysisRecommendationDecision = 'PENDING' | 'APPLIED' | 'MODIFIED' | 'REJECTED'
 export type AnalysisRecommendationEvidenceType = 'DETAIL_CONTENT' | 'MANUAL_CAPTION' | 'PINNED_AUTHOR_COMMENT' | 'SOURCE_EVIDENCE'
+export type ManualPromptEvidenceKind = 'CURRENT_TITLE' | 'CURRENT_SUMMARY' | 'DETAIL_CONTENT' | 'MANUAL_CAPTION' | 'PINNED_AUTHOR_COMMENT' | 'SOURCE_EVIDENCE' | 'CURRENT_CATEGORY' | 'CURRENT_TAGS'
+
+export interface ManualRecommendationPromptEvidence {
+  evidenceId: string
+  kind: ManualPromptEvidenceKind
+  sourceEvidenceId: string | null
+  label: string
+  text: string
+}
+
+export interface ManualRecommendationPrompt {
+  schemaVersion: string
+  sourceFingerprint: string
+  prompt: string
+  evidence: ManualRecommendationPromptEvidence[]
+}
 
 export interface AnalysisRecommendationEvidence {
   evidenceType: AnalysisRecommendationEvidenceType
