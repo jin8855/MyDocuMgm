@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,84 @@ internal sealed class Phase2DRecommendationSqlFactAttribute : FactAttribute
 
 public sealed class SqlServerAnalysisRecommendationPersistenceTests
 {
+    [Phase2DRecommendationSqlFact]
+    public async Task DisposableSqlServer_ManualPromptImport_IsIdempotentAndPersistsOnlyValidatedGraph()
+    {
+        var connection = Environment.GetEnvironmentVariable(Phase2DRecommendationSqlFactAttribute.ConnectionVariable)!;
+        Assert.Contains("Database=MyDocuMgm_P2D_Recommendation_", connection, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Database=MyDocuMgm;", connection, StringComparison.OrdinalIgnoreCase);
+        var provider = new CountingProvider();
+        await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureLogging(logging => logging.ClearProviders());
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<MyDocuMgmDbContext>();
+                services.RemoveAll<DbContextOptions<MyDocuMgmDbContext>>();
+                services.AddDbContext<MyDocuMgmDbContext>(options => options.UseSqlServer(connection));
+                services.RemoveAll<IAnalysisRecommendationProvider>();
+                services.AddSingleton<IAnalysisRecommendationProvider>(provider);
+            });
+        });
+        var categoryId = CategoryCatalog.All.Single(value => value.Code == "OTHER").Id;
+        var content = CreateContent(Guid.NewGuid(), categoryId, "수동 bridge 기존 제목");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MyDocuMgmDbContext>();
+            db.Contents.Add(content);
+            await db.SaveChangesAsync();
+        }
+
+        using var client = factory.CreateClient();
+        var prompt = (await (await client.PostAsJsonAsync(
+            $"/api/contents/{content.Id}/analysis-recommendations/manual-prompt",
+            new { includedEvidenceKinds = new[] { "CURRENT_TITLE", "DETAIL_CONTENT", "CURRENT_CATEGORY" } }))
+            .Content.ReadFromJsonAsync<ManualRecommendationPromptDto>())!;
+        var raw = JsonSerializer.Serialize(new
+        {
+            schemaVersion = prompt.SchemaVersion,
+            sourceFingerprint = prompt.SourceFingerprint,
+            recommendations = new
+            {
+                title = new { value = "검증된 수동 추천", reason = "현재 자료", confidence = "HIGH", evidenceIds = new[] { "E1" } },
+                summary = (object?)null,
+                category = new { value = "OTHER", reason = "현재 분류", confidence = "LOW", evidenceIds = new[] { "E1" } },
+                tags = (object?)null
+            }
+        });
+        var request = new
+        {
+            schemaVersion = prompt.SchemaVersion,
+            sourceFingerprint = prompt.SourceFingerprint,
+            pastedResponse = raw,
+            idempotencyKey = "sql-manual-import",
+            includedEvidenceIds = prompt.Evidence.Select(value => value.EvidenceId).ToArray()
+        };
+        var firstResponse = await client.PostAsJsonAsync($"/api/contents/{content.Id}/analysis-recommendations/manual-import", request);
+        var first = (await firstResponse.Content.ReadFromJsonAsync<AnalysisRecommendationRunDto>())!;
+        var replay = (await (await client.PostAsJsonAsync($"/api/contents/{content.Id}/analysis-recommendations/manual-import", request))
+            .Content.ReadFromJsonAsync<AnalysisRecommendationRunDto>())!;
+
+        Assert.True(firstResponse.IsSuccessStatusCode, await firstResponse.Content.ReadAsStringAsync());
+        Assert.Equal(first.Id, replay.Id);
+        Assert.Equal(0, provider.CallCount);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MyDocuMgmDbContext>();
+            var storedContent = await db.Contents.AsNoTracking().SingleAsync(value => value.Id == content.Id);
+            Assert.Equal("수동 bridge 기존 제목", storedContent.Title);
+            var storedRun = await db.AnalysisRecommendationRuns.AsNoTracking().SingleAsync(value => value.Id == first.Id);
+            Assert.Equal(ManualAnalysisRecommendationService.Provenance, storedRun.ProviderIdentifier);
+            Assert.Equal(ManualAnalysisRecommendationService.SchemaVersion, storedRun.ModelVersion);
+            Assert.Equal(2, await db.AnalysisRecommendationItems.CountAsync(value => value.RunId == first.Id));
+            Assert.True(await db.AnalysisRecommendationEvidenceRecords.AnyAsync(value => value.Item.RunId == first.Id));
+            Assert.DoesNotContain(raw, storedRun.ProviderIdentifier, StringComparison.Ordinal);
+            db.Contents.Remove(await db.Contents.SingleAsync(value => value.Id == content.Id));
+            await db.SaveChangesAsync();
+        }
+    }
+
     [Phase2DRecommendationSqlFact]
     public async Task DisposableSqlServer_DefaultProviderFailsClosedAndPreservesContent()
     {
@@ -262,5 +341,18 @@ public sealed class SqlServerAnalysisRecommendationPersistenceTests
                     new(AnalysisRecommendationKind.CATEGORY, input.CurrentCategoryId.ToString(), "현재 분류", AnalysisRecommendationConfidence.LOW, []),
                     new(AnalysisRecommendationKind.TAG, "SQL추천태그", "검색어", AnalysisRecommendationConfidence.MEDIUM, [])
                 ]));
+    }
+
+    private sealed class CountingProvider : IAnalysisRecommendationProvider
+    {
+        public int CallCount { get; private set; }
+        public string ProviderIdentifier => "must-not-run";
+        public Task<AnalysisRecommendationProviderResult> RecommendAsync(
+            AnalysisRecommendationProviderInput input,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            throw new InvalidOperationException("Manual bridge must not call a provider.");
+        }
     }
 }

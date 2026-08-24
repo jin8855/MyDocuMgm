@@ -77,3 +77,18 @@ UI는 현재값과 적용 예정값을 분리하고 낮은 확신에 `확인 필
 - `ExternalFetchAttempts`: HTTP 요청별 시도 기록으로 유지하며 의미를 변경하지 않는다.
 - 자동 자막·댓글 수집, 외부 이미지·영상 다운로드: 유보한다.
 - 실제 외부 AI 연동과 실행, Phase 3, 배포, commit/push/PR/merge: 승인되지 않았다.
+
+## 9. 사용자 중개 수동 복사·붙여넣기 계약
+
+Phase 2D의 실행 방식은 `USER_MEDIATED_COPY_PASTE`다. MyDocuMgm은 현재 자료에서 프롬프트를 만들지만 외부 AI 도구로 전송하지 않는다. 사용자가 프롬프트를 확인·수정하고 명시적으로 복사한 뒤, 외부 도구의 답변을 다시 제품에 붙여넣는다.
+
+- schema version: `mydocumgm.analysis-recommendation.v1`
+- provenance: `MANUAL_COPY_PASTE`
+- 입력 근거: 현재 제목·요약·본문·수동 Caption·작성자 고정 댓글·기존 `SourceEvidence`·현재 분류·태그 중 사용자가 선택한 실제 값
+- 응답: 정확한 JSON 또는 단일 `json` 코드 블록, 알 수 없는 필드 거부, UTF-8 64 KiB 및 JSON depth 16 이하
+- 검증: 현재 Content fingerprint, 선택 근거 ID, 고정 11개 분류, 제목 200자, 요약 500자, 태그 각 80자·최대 20개, 사유 500자, 정성 확신 `HIGH/MEDIUM/LOW`
+- 저장: 검증된 item·reason·confidence·제한 근거·idempotency만 기존 Phase 2D 테이블에 저장
+- 비영속: 생성·편집 prompt, raw 붙여넣기 답변, 외부 서비스·계정·모델 추정값
+- 적용: import 성공은 `Content`를 바꾸지 않는다. 기존 적용·수정·사용 안 함 선택과 사용자 최종 저장이 성공해야만 값이 반영된다.
+
+API는 `POST .../manual-prompt`와 `POST .../manual-import`를 제공한다. 기존 provider endpoint는 호환을 위해 fail-closed 상태로 유지하지만 제품 UI는 호출하지 않는다. 외부 AI SDK, API key, secret, `HttpClient` 기반 AI 호출은 추가하지 않는다. 이 계약은 기존 schema의 `ProviderIdentifier`, `ModelVersion`, idempotency 및 item/evidence 구조를 재사용하므로 신규 migration을 요구하지 않는다.

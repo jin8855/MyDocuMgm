@@ -5,7 +5,9 @@ namespace MyDocuMgm.Api.Controllers;
 
 [ApiController]
 [Route("api/contents/{contentId:guid}/analysis-recommendations")]
-public sealed class AnalysisRecommendationsController(AnalysisRecommendationService service) : ControllerBase
+public sealed class AnalysisRecommendationsController(
+    AnalysisRecommendationService service,
+    ManualAnalysisRecommendationService manualService) : ControllerBase
 {
     [HttpPost]
     public Task<AnalysisRecommendationRunDto> Generate(
@@ -29,6 +31,20 @@ public sealed class AnalysisRecommendationsController(AnalysisRecommendationServ
         [FromQuery] int limit = 10,
         CancellationToken cancellationToken = default) =>
         service.ListAsync(contentId, limit, cancellationToken);
+
+    [HttpPost("manual-prompt")]
+    public Task<ManualRecommendationPromptDto> CreateManualPrompt(
+        Guid contentId,
+        [FromBody] CreateManualRecommendationPromptRequest request,
+        CancellationToken cancellationToken) =>
+        manualService.CreatePromptAsync(contentId, request, cancellationToken);
+
+    [HttpPost("manual-import")]
+    public Task<AnalysisRecommendationRunDto> ImportManualResponse(
+        Guid contentId,
+        [FromBody] ImportManualAnalysisRecommendationsRequest request,
+        CancellationToken cancellationToken) =>
+        manualService.ImportAsync(contentId, request, cancellationToken);
 
     [HttpPut("{runId:guid}/decisions")]
     public Task<AnalysisRecommendationDecisionResult> Decide(
